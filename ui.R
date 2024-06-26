@@ -14,7 +14,7 @@
 #Blunder %
 #extract time spent per move as a list
 #breakdown time spent per move
-#implement a system to distinguish the 23 unique types of games on chess.com
+#implement a system to distinguish the 23 unqiue types of games on chess.com
 
 
 #To Do Reasonably Easily
@@ -38,38 +38,35 @@
 
 
 
-library(plotly)
-library(httr)
-library(dplyr)
-library(shiny)
-library(stringr)
-library(tidyr)
-library(ggplot2)
-library(scales)
-library(lubridate)
-library(bigchess)
+
 
 ui <- fluidPage(
-  titlePanel("Chess Application"),
+  titlePanel("Chess Game Data"),
   sidebarLayout(
     sidebarPanel(
-      textInput("username", "Chess.com Username"),
-      numericInput("numberofgames", "Number Of Games to Analyze", 1),
-      textInput("ChessGameType", "Chess Time Format"),
+      textInput("username", "Chess.com Username:"),
+      numericInput("numberofgames", "Number of Games:", value = 500000, min = 1),
+      pickerInput("ChessGameType", "Select Game Types:", choices = c("Rapid", "Blitz", "Bullet"), multiple = TRUE),
       actionButton("getDataBtn", "Get Data")
     ),
     mainPanel(
-      textOutput("textOutput"),
       plotOutput("plotOutput"),
-      plotOutput("plotOutput1"),
       plotOutput("plotOutput2"),
       plotOutput("plotOutput3"),
-      plotOutput("plotOutput4"),
-      plotOutput("plotOutput5"),
-      plotOutput("plotOutput6"),
+      plotlyOutput("plotOutput4"),
+      fluidRow(
+        column(6, align = "left", selectInput("weekSelect", "Select Week:", choices = NULL)),
+        column(6, align = "center", selectInput("previousWeekSelect", "Select Previous Week:", choices = NULL))
+      ),
       plotlyOutput("plotOutput7"),
-      
-      
+      fluidRow(
+        column(6, align = "left", selectInput("monthSelect", "Select Month:", choices = NULL)),
+        column(6, align = "center", selectInput("previousMonthSelect", "Select Previous Month:", choices = NULL))
+      ),
+      plotOutput("plotOutput6"),
+      plotOutput("plotOutput5")
     )
   )
 )
+
+
