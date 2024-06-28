@@ -14,7 +14,7 @@
 #Blunder %
 #extract time spent per move as a list
 #breakdown time spent per move
-#implement a system to distinguish the 23 unqiue types of games on chess.com
+
 
 
 #To Do Reasonably Easily
@@ -25,9 +25,13 @@
 #add in graphs showing how they compare to other players in a similar elo level
 #Win % by color
 #add time mangement graphs
+#Fix Elo change so it starts from 0 and not from wherever the first game ended at
+#add in other pages so you can segment the data analysis into different sections
+#make all graphs interactable
 
 
 #Done
+#implement a system to distinguish the 23 unqiue types of games on chess.com (NOTE Adjusted to change for game type not for the specifics within each game type. So bullet will account for both 1+0 or 1+1)
 #Allow for users to put in their username and get output
 #added graph functionality
 #Get the data into the app
@@ -35,10 +39,22 @@
 #performance by day of week
 #allow for breaking games into different categories based on time format
 #add function that allows to select the last x amount of games to analyze
+#Improve speed of getting data
 
 
 
 
+library(shiny)
+library(httr)
+library(jsonlite)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(shinyWidgets)
+library(lubridate)
+library(shiny)
+library(shinyWidgets)
+library(plotly)
 
 ui <- fluidPage(
   titlePanel("Chess Game Data"),
@@ -55,18 +71,22 @@ ui <- fluidPage(
       plotOutput("plotOutput3"),
       plotlyOutput("plotOutput4"),
       fluidRow(
-        column(6, align = "left", selectInput("weekSelect", "Select Week:", choices = NULL)),
-        column(6, align = "center", selectInput("previousWeekSelect", "Select Previous Week:", choices = NULL))
+        column(6, align = "left", 
+               selectInput("YearSelect", "Select Year(s):", 
+                           choices = unique(result_df$year), 
+                           selected = unique(result_df$year), 
+                           multiple = TRUE)),
       ),
       plotlyOutput("plotOutput7"),
+      plotOutput("plotOutput6"),
+      fluidRow(
+        column(6, align = "left", selectInput("weekSelect", "Select Week:", choices = NULL)),
+      ),
+      plotOutput("plotOutput5"),
       fluidRow(
         column(6, align = "left", selectInput("monthSelect", "Select Month:", choices = NULL)),
-        column(6, align = "center", selectInput("previousMonthSelect", "Select Previous Month:", choices = NULL))
-      ),
-      plotOutput("plotOutput6"),
-      plotOutput("plotOutput5")
+      )
     )
   )
 )
-
 
