@@ -14,7 +14,7 @@
 #Blunder %
 #extract time spent per move as a list
 #breakdown time spent per move
-
+#Reset the elo change after the end of every year
 
 
 #To Do Reasonably Easily
@@ -25,7 +25,7 @@
 #add in graphs showing how they compare to other players in a similar elo level
 #Win % by color
 #add time mangement graphs
-#Fix Elo change so it starts from 0 and not from wherever the first game ended at
+#Fix Elo change 
 #add in other pages so you can segment the data analysis into different sections
 #make all graphs interactable
 
@@ -56,37 +56,57 @@ library(shiny)
 library(shinyWidgets)
 library(plotly)
 
+result_df<-c()
 ui <- fluidPage(
+  
+  # App title
   titlePanel("Chess Game Data"),
-  sidebarLayout(
-    sidebarPanel(
-      textInput("username", "Chess.com Username:"),
-      numericInput("numberofgames", "Number of Games:", value = 500000, min = 1),
-      pickerInput("ChessGameType", "Select Game Types:", choices = c("Rapid", "Blitz", "Bullet"), multiple = TRUE),
-      actionButton("getDataBtn", "Get Data")
+  
+  # Use tabsetPanel for multiple pages
+  tabsetPanel(
+    # First tab - Elo Changes
+    tabPanel("Elo Changes", 
+             sidebarLayout(
+               sidebarPanel(
+                 textInput("username", "Chess.com Username:"),
+                 numericInput("numberofgames", "Number of Games:", value = 500000, min = 1),
+                 pickerInput("ChessGameType", "Select Game Types:", choices = c("Rapid", "Blitz", "Bullet"), multiple = TRUE),
+                 actionButton("getDataBtn", "Get Data")
+               ),
+               mainPanel(
+                 plotOutput("plotOutput"),
+                 plotOutput("plotOutput2"),
+                 plotOutput("plotOutput3"),
+                 plotlyOutput("plotOutput4"),
+                 fluidRow(
+                   column(6, align = "left", 
+                          selectInput("YearSelect", "Select Year(s):", 
+                                      choices = unique(result_df$year), 
+                                      selected = unique(result_df$year), 
+                                      multiple = TRUE)),
+                 ),
+                 plotlyOutput("plotOutput6"),
+                 fluidRow(
+                   column(6, align = "left", 
+                          selectInput("WeekSelect", "Select Week(s):", 
+                                      choices = unique(result_df$week), 
+                                      selected = unique(result_df$week), 
+                                      multiple = TRUE)),
+                 plotlyOutput("plotOutput5"),
+                 fluidRow(
+                   column(6, align = "left", 
+                          selectInput("MonthSelect", "Select Month(s):", 
+                                      choices = unique(result_df$month), 
+                                      selected = unique(result_df$month), 
+                                      multiple = TRUE)),
+                 ),
+               )
+             )
     ),
-    mainPanel(
-      plotOutput("plotOutput"),
-      plotOutput("plotOutput2"),
-      plotOutput("plotOutput3"),
-      plotlyOutput("plotOutput4"),
-      fluidRow(
-        column(6, align = "left", 
-               selectInput("YearSelect", "Select Year(s):", 
-                           choices = unique(result_df$year), 
-                           selected = unique(result_df$year), 
-                           multiple = TRUE)),
-      ),
-      plotlyOutput("plotOutput7"),
-      plotOutput("plotOutput6"),
-      fluidRow(
-        column(6, align = "left", selectInput("weekSelect", "Select Week:", choices = NULL)),
-      ),
-      plotOutput("plotOutput5"),
-      fluidRow(
-        column(6, align = "left", selectInput("monthSelect", "Select Month:", choices = NULL)),
-      )
+             
+             # Second tab - Gameplay
+             tabPanel("Gameplay"),
+             tabPanel("TBD")
     )
   )
 )
-
