@@ -25,12 +25,13 @@
 #add in graphs showing how they compare to other players in a similar elo level
 #Win % by color
 #add time mangement graphs
-#Fix Elo change 
-#add in other pages so you can segment the data analysis into different sections
 #make all graphs interactable
 
 
 #Done
+#add in other pages so you can segment the data analysis into different sections
+
+#Fix Elo change 
 #implement a system to distinguish the 23 unqiue types of games on chess.com (NOTE Adjusted to change for game type not for the specifics within each game type. So bullet will account for both 1+0 or 1+1)
 #Allow for users to put in their username and get output
 #added graph functionality
@@ -84,29 +85,49 @@ ui <- fluidPage(
                                       choices = unique(result_df$year), 
                                       selected = unique(result_df$year), 
                                       multiple = TRUE)),
-                 ),
+                   
                  plotlyOutput("plotOutput6"),
                  fluidRow(
                    column(6, align = "left", 
                           selectInput("WeekSelect", "Select Week(s):", 
                                       choices = unique(result_df$week), 
                                       selected = unique(result_df$week), 
-                                      multiple = TRUE)),
+                                      multiple = TRUE))
+                ),
+                 ),
                  plotlyOutput("plotOutput5"),
                  fluidRow(
                    column(6, align = "left", 
                           selectInput("MonthSelect", "Select Month(s):", 
                                       choices = unique(result_df$month), 
                                       selected = unique(result_df$month), 
-                                      multiple = TRUE)),
-                 ),
+                                      multiple = TRUE))
+                 )
                )
              )
     ),
-             
-             # Second tab - Gameplay
-             tabPanel("Gameplay"),
-             tabPanel("TBD")
-    )
+    
+    # Second tab - Gameplay
+    tabPanel("TimeUse",
+             sidebarLayout(
+               sidebarPanel(
+                 numericInput("numGames", "Number of Games:", min = 1, max = 100, value = 10),
+                 selectInput("timeClass", "Time Class:", 
+                             choices = list("Bullet" = "bullet", 
+                                            "Blitz" = "blitz", 
+                                            "Rapid" = "rapid"),
+                             selected = "blitz",
+                             multiple = TRUE),
+                 actionButton("GetTimeBtn", "Get TimeData")
+               ),
+               mainPanel(
+                 plotOutput("TimePlotOutput")
+               )
+             )
+    ),
+    
+    
+    # Third tab - TBD
+    tabPanel("Gameplay")
   )
 )

@@ -72,6 +72,7 @@ clean_usernames <- function(user_string) {
 }
 
 server <- function(input, output, session) {
+
   observeEvent(input$getDataBtn, {
     chess_username <- input$username
     desired_rows <- input$numberofgames
@@ -100,6 +101,7 @@ server <- function(input, output, session) {
              games$rules == "chess", 
              games$rated == TRUE)
     
+
     result_list <- lapply(seq_len(nrow(combined_df$games)), function(i) {
       pgn_values <- extract_pgn_values(combined_df$games$pgn[i])
       pgn_values <- as.data.frame(t(pgn_values), stringsAsFactors = FALSE)
@@ -450,9 +452,144 @@ server <- function(input, output, session) {
       })
     })
     
-    
-
+    #Logic for time
+    observeEvent(input$GetTimeBtn, {
+      
+      # Initialize progress bar
+      progress <- shiny::Progress$new()
+      progress$set(message = "Processing games", value = 0)
+      on.exit(progress$close())
+      
+      # Filter data based on the selected time class and number of games
+      selected_time_class <- input$timeClass
+      num_games_to_plot <- input$numGames
+      
+      filtered_data <- combined_df %>% 
+        filter(games$rules == "chess", 
+               games$rated == "TRUE",
+               games$time_class %in% selected_time_class) %>% 
+        head(num_games_to_plot)
+      
+      # Create a function that calculates the amount of time spent per move
+      subtract_time <- function(set_value, variable) {
+        set_time <- as.POSIXct(set_value, format = "%M:%OS")
+        set_time <- as.numeric(set_time)
+        variable_time <- as.POSIXct(variable, format = "%M:%OS")
+        variable_time <- as.numeric(variable_time)
+        # Subtract the variable time from the set time
+        result_time <- set_time - variable_time
+        
+        # Return the result time
+        return(result_time)
+      }
+      
+      # Initialize lists and counters
+      timepermove <- list()
+      count <- 0
+      total_moves <- sum(sapply(filtered_data$games$pgn, function(pgn) length(str_extract_all(pgn, '\\d+:\\d+(?:\\.\\d+|)]')[[1]])))
+      move_counter <- 0
+      
+      # Loop through each game in filtered_data
+      for (game_index in seq_along(filtered_data$games$time_control)) {
+        
+        # Update progress bar based on the number of moves processed
+        progress$set(value = move_counter / total_moves)
+        
+        value <- filtered_data$games$time_control[game_index]
+        
+        # Split the string based on the '+'
+        split_strings <- strsplit(value, "\\+")[[1]]
+        
+        # Extract the length of the game for each player in minutes
+        Length_of_Game_For_Each_Player <- as.numeric(split_strings[1])
+        
+        # Convert minutes to HH:MM format
+        time_in_hhmm <- sprintf("%02d:%02d", Length_of_Game_For_Each_Player %/% 60, Length_of_Game_For_Each_Player %% 60)
+        
+        # Set 'set_value' to the formatted time
+        set_value <- time_in_hhmm
+        
+        # Initialize a list to store time per move within the outer loop
+        timepermoveinterior <- list()
+        
+        # Extract all matches of time values in the 'value'
+        matches <- str_extract_all(filtered_data$games$pgn[game_index], '\\d+:\\d+(?:\\.\\d+|)]')[[1]]
+        set_value <- time_in_hhmm
+        set_value1 <- time_in_hhmm
+        
+        # Get the time_class for the current game
+        current_time_class <- filtered_data$games$time_class[game_index]
+        
+        for (move in seq_along(matches)) {
+          if (move %% 2 == 0) {
+            m2 <- as.character(matches[move])
+            # Convert the string to POSIXct format (minutes and seconds)
+            NewMatches <- as.POSIXct(m2, format = "%M:%OS")
+            # Calculate time remaining using a custom function 'subtract_time'
+            timeRemaining <- subtract_time(set_value, NewMatches)
+            # Update 'set_value' for the next iteration
+            set_value <- m2
+            # Round the time remaining to one decimal place and add it to the interior list
+            timeRemaining <- round(timeRemaining, digits = 1)
+            timepermoveinterior <- c(timepermoveinterior, timeRemaining)
+          } else {
+            if (move == 1) {
+              m1 <- set_value1
+            } else {
+              m1 <- as.character(matches[move])
+            }
+            # Convert the string to POSIXct format (minutes and seconds)
+            NewMatches1 <- as.POSIXct(m1, format = "%M:%OS")
+            # Calculate time remaining using a custom function 'subtract_time'
+            timeRemaining <- subtract_time(set_value1, NewMatches1)
+            # Update 'set_value1' for the next iteration
+            set_value1 <- m1
+            # Round the time remaining to one decimal place and add it to the interior list
+            timeRemaining <- round(timeRemaining, digits = 1)
+            timepermoveinterior <- c(timepermoveinterior, timeRemaining)
+          }
+          
+          move_counter <- move_counter + 1
+          # Update progress bar based on the number of moves processed
+          progress$set(value = move_counter / total_moves)
+        }
+        
+        # Add time_per_move and time_class for the current game to the respective lists
+        timepermove <- c(timepermove, list(timepermoveinterior))
+      }
+      
+      progress$close()
+      
+      # Combine all games into zzztest dataframe
+      zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
+        inner_list <- timepermove[[list_num]]
+        if (length(inner_list) > 0) {
+          df <- data.frame(
+            time_per_move = unlist(inner_list),
+            move_number = seq_along(inner_list),
+            game_number = list_num,
+            time_class = rep(filtered_data$games$time_class[list_num], length(inner_list))
+          )
+          return(df)
+        } else {
+          return(NULL)
+        }
+      }))
+      
+      output$TimePlotOutput <- renderPlot({
+        ggplot(data = zzztest, aes(x = move_number, y = time_per_move, color = time_class)) + 
+          geom_smooth()+
+          ylab("Time Spent Per Move (Seconds)") +
+          xlab("Move Number") +
+          theme_minimal()
       })
+    })
+    
+    
+    
+      })
+  
+  
   
 }
 
