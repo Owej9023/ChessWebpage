@@ -12,9 +12,7 @@
 #add suggestions on what they need to do to improve AKA. where they are performing worse than other players at their elo level, ex.time management,# of blunders,advantage captilization
 #add function to download their games as a csv,pgn,etc...
 #Blunder %
-#extract time spent per move as a list
-#breakdown time spent per move
-#Reset the elo change after the end of every year
+
 
 
 #To Do Reasonably Easily
@@ -24,13 +22,12 @@
 #performance by opening
 #add in graphs showing how they compare to other players in a similar elo level
 #Win % by color
-#add time mangement graphs
+#add multiple time mangement graphs
 #make all graphs interactable
 
 
 #Done
 #add in other pages so you can segment the data analysis into different sections
-
 #Fix Elo change 
 #implement a system to distinguish the 23 unqiue types of games on chess.com (NOTE Adjusted to change for game type not for the specifics within each game type. So bullet will account for both 1+0 or 1+1)
 #Allow for users to put in their username and get output
@@ -41,7 +38,9 @@
 #allow for breaking games into different categories based on time format
 #add function that allows to select the last x amount of games to analyze
 #Improve speed of getting data
-
+#extract time spent per move as a list
+#breakdown time spent per move
+#Reset the elo change after the end of every year
 
 
 
