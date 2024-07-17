@@ -1,0 +1,395 @@
+---
+title: "Untitled"
+author: "Owen Dy"
+date: "2024-06-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+library(shiny)
+library(httr)
+library(jsonlite)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(lubridate)
+library(hms)
+library(plotly)
+library(shinyWidgets)
+library(stringr)
+
+
+# Function to extract values from the PGN string
+extract_pgn_values <- function(pgn, num_values = 21) {
+  input_text <- paste(pgn, collapse = " ")
+  matches <- str_extract_all(input_text, "\\[(.*?)\\]")[[1]][1:num_values]
+  return(matches)
+}
+
+# Function to clean date values
+clean_dates <- function(dates) {
+  return(as.Date(gsub("\\[Date \"|\"\\]", "", dates), format = "%Y.%m.%d"))
+}
+
+# Function to clean result values
+clean_results <- function(results) {
+  return(regmatches(results, regexpr("\\d+/\\d+-\\d+/\\d+|\\d+-\\d+", results))[[1]])
+}
+
+# Function to clean Elo values
+clean_elo <- function(elo) {
+  return(as.numeric(gsub("\\D", "", elo)))
+}
+
+# Function to clean time values
+clean_time <- function(time) {
+  return(hms::as_hms(regmatches(time, regexpr("\\d{2}:\\d{2}:\\d{2}", time))[[1]]))
+}
+
+# Function to clean usernames
+clean_usernames <- function(user_string) {
+  return(sub("\\[.*?\"(.*?)\"\\]", "\\1", user_string))
+}
+
+
+chess_username <- "Owej9023"
+desired_rows <- 500000
+game_types <- c("Rapid", "Blitz", "Bullet")
+api_url <- paste0("https://api.chess.com/pub/player/", chess_username, "/games/archives")
+```
+
+```{r}
+# Fetch and parse archive URLs
+archives <- jsonlite::fromJSON(content(GET(api_url), "text"))
+
+# Initialize progress bar
+#progress <- shiny::Progress$new()
+#progress$set(message = "Fetching data", value = 0)
+#on.exit(progress$close())
+
+# Fetch and combine game data from all archives
+archive_data <- list()
+total_archives <- length(archives$archives)
+
+for (i in seq_along(archives$archives)) {
+  archive_data[[i]] <- jsonlite::fromJSON(content(GET(archives$archives[i]), "text", flatten = TRUE))
+  #progress$inc(1 / total_archives, detail = paste("Processing archive", i, "of", total_archives))
+}
+
+combined_df <- bind_rows(archive_data) %>%
+  filter(grepl(paste(game_types, collapse = "|"), games$time_class, ignore.case = TRUE),
+         games$rules == "chess", 
+         games$rated == TRUE)
+
+# Extract values from PGN strings and include ChessGameType
+result_list <- lapply(seq_len(nrow(combined_df$games)), function(i) {
+  pgn_values <- extract_pgn_values(combined_df$games$pgn[i])
+  pgn_values <- as.data.frame(t(pgn_values), stringsAsFactors = FALSE)
+  pgn_values$ChessGameType <- combined_df$games$time_class[i]
+  return(pgn_values)
+})
+
+result_df <- bind_rows(result_list) %>% na.omit()
+
+if (desired_rows < nrow(result_df)) {
+  result_df <- tail(result_df, desired_rows)
+}
+
+result_df$V3 <- clean_dates(result_df$V3)
+result_df$V3 <- as.Date(result_df$V3)
+result_df$V7 <- sapply(result_df$V7, clean_results)
+result_df[, c(14, 15)] <- sapply(result_df[, c(14, 15)], clean_elo)
+result_df$V16 <- sapply(result_df$V16, clean_elo)
+result_df[, c(18, 20)] <- lapply(result_df[, c(18, 20)], clean_time)
+result_df[, c(5, 6)] <- sapply(result_df[, c(5, 6)], clean_usernames)
+
+result_df$elo_change <- NA
+result_df$total_elo_change <- NA
+
+for (i in 1:nrow(result_df)) {
+  if (result_df[i, "V5"] == chess_username) {
+    current_elo <- result_df[i, "V14"]
+    opponent_elo <- result_df[i, "V15"]
+  } else if (result_df[i, "V6"] == chess_username) {
+    current_elo <- result_df[i, "V15"]
+    opponent_elo <- result_df[i, "V14"]
+  } else {
+    next
+  }
+  
+  if (i == 1) {
+    result_df[i, "elo_change"] <- 0
+  } else {
+    previous_elo <- ifelse(result_df[i - 1, "V5"] == chess_username, 
+                           result_df[i - 1, "V14"], 
+                           result_df[i - 1, "V15"])
+    elo_change <- current_elo - previous_elo
+    result_df[i, "elo_change"] <- elo_change
+  }
+}
+
+result_df$total_elo_change <- ave(result_df$elo_change, result_df$V3, FUN = cumsum)
+result_df$elo_change[is.na(result_df$elo_change)] <- 0
+
+result_df <- result_df %>%
+  group_by(V3) %>%
+  mutate(total_elo_change = last(total_elo_change)) %>%
+  ungroup() %>%
+  mutate(
+    day_of_week = factor(weekdays(V3), levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")),
+    chess_username = ifelse(chess_username %in% c(V5, V6), as.numeric(ifelse(chess_username %in% V5, V14, V15)), NA_real_),
+    hour = hour(V18),
+    hourend = hour(V20),
+    game_number = row_number(),
+    game_type = result_df$ChessGameType
+  ) %>%
+  select(-V17, -V21)
+
+result_df$year <- year(result_df$V3)
+result_df$week <- week(result_df$V3)
+result_df$month <- month(result_df$V3)
+
+summary_week <- result_df %>%
+  group_by(year, week, game_type) %>%
+  summarize(
+    mean_week_elo = mean(total_elo_change, na.rm = TRUE),
+    sd_week_elo = sd(total_elo_change, na.rm = TRUE),
+    count = n(),
+    sem_week_elo = sd(total_elo_change, na.rm = TRUE) / sqrt(n())
+  )
+
+summary_month <- result_df %>%
+  group_by(year, month, game_type) %>%
+  summarize(
+    mean_month_elo = mean(total_elo_change, na.rm = TRUE),
+    sd_month_elo = sd(total_elo_change, na.rm = TRUE),
+    count = n(),
+    sem_month_elo = sd(total_elo_change, na.rm = TRUE) / sqrt(n())
+  )
+
+summary_year <- result_df %>%
+  group_by(year, game_type) %>%
+  summarize(
+    mean_year_elo = mean(total_elo_change, na.rm = TRUE),
+    sd_year_elo = sd(total_elo_change, na.rm = TRUE),
+    count = n(),
+    sem_year_elo = sd(total_elo_change, na.rm = TRUE) / sqrt(n())
+  )
+
+```
+
+```{r}
+library(plotly)
+library(httr)
+library(dplyr)
+library(shiny)
+library(stringr)
+library(tidyr)
+library(ggplot2)
+library(chron)
+library(scales)
+library(lubridate)
+library(bigchess)
+
+filtered_data <- combined_df %>% filter(games$rules == "chess")
+filtered_data <- filtered_data %>% filter(games$rated == "TRUE")
+
+# Create a function that calculates the amount of time spent per move
+subtract_time <- function(set_value, variable) {
+  set_time <- as.POSIXct(set_value, format = "%M:%OS")
+  set_time <- as.numeric(set_time)
+  variable_time <- as.POSIXct(variable, format = "%M:%OS")
+  variable_time <- as.numeric(variable_time)
+  # Subtract the variable time from the set time
+  result_time <- set_time - variable_time
+
+  # Return the result time
+  return(result_time)
+}
+
+# Initialize lists and counters
+timepermove <- list()
+count <- 0
+
+# Loop through each game in combined_df
+for (value in combined_df$games$time_control) {
+  # Split the string based on the '+'
+  split_strings <- strsplit(value, "\\+")[[1]]
+  
+  # Extract the length of the game for each player in minutes
+  Length_of_Game_For_Each_Player <- as.numeric(split_strings[1])
+  
+  # Convert minutes to HH:MM format
+  time_in_hhmm <- sprintf("%02d:%02d", Length_of_Game_For_Each_Player %/% 60, Length_of_Game_For_Each_Player %% 60)
+  
+  # Set 'set_value' to the formatted time
+  set_value <- time_in_hhmm
+  
+  # Initialize a list to store time per move within the outer loop
+  timepermoveinterior <- list()
+  
+  # Extract all matches of time values in the 'value'
+  count <- count + 1
+  matches <- str_extract_all(filtered_data$games$pgn[count], '\\d+:\\d+(?:\\.\\d+|)]')[[1]]
+  set_value <- time_in_hhmm
+  set_value1 <- time_in_hhmm
+  
+  # Get the time_class for the current game
+  current_time_class <- filtered_data$games$time_class[count]
+  
+  for (move in 1:length(matches)) {
+    if (move %% 2 == 0) {
+      m2 <- as.character(matches[move])
+      # Convert the string to POSIXct format (minutes and seconds)
+      NewMatches <- as.POSIXct(m2, format = "%M:%OS")
+      # Calculate time remaining using a custom function 'subtract_time'
+      timeRemaining <- subtract_time(set_value, NewMatches)
+      # Update 'set_value' for the next iteration
+      set_value <- m2
+      # Round the time remaining to one decimal place and add it to the interior list
+      timeRemaining <- round(timeRemaining, digits = 1)
+      timepermoveinterior <- c(timepermoveinterior, timeRemaining)
+    } else {
+      if (move == 1) {
+        m1 <- set_value1
+      } else {
+        m1 <- as.character(matches[move])
+      }
+      # Convert the string to POSIXct format (minutes and seconds)
+      NewMatches1 <- as.POSIXct(m1, format = "%M:%OS")
+      # Calculate time remaining using a custom function 'subtract_time'
+      timeRemaining <- subtract_time(set_value1, NewMatches1)
+      # Update 'set_value1' for the next iteration
+      set_value1 <- m1
+      # Round the time remaining to one decimal place and add it to the interior list
+      timeRemaining <- round(timeRemaining, digits = 1)
+      timepermoveinterior <- c(timepermoveinterior, timeRemaining)
+    }
+  }
+  
+  # Add time_per_move and time_class for the current game to the respective lists
+  timepermove <- c(timepermove, list(timepermoveinterior))
+}
+
+# Combine all games into zzztest dataframe
+zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
+  inner_list <- timepermove[[list_num]]
+  if (length(inner_list) > 0) {
+    df <- data.frame(
+      time_per_move = unlist(inner_list),
+      move_number = seq_along(inner_list),
+      game_number = list_num,
+      time_class = rep(filtered_data$games$time_class[list_num], length(inner_list))
+    )
+    return(df)
+  } else {
+    return(NULL)
+  }
+}))
+
+# Print the first few rows of 'zzztest' to verify
+print(head(zzztest))
+
+
+```
+
+```{r}
+
+# Sample PGN data
+pgn_data <- filtered_data$games$pgn[1]
+
+# Extract moves and timestamps
+extract_moves_and_timestamps <- function(pgn) {
+  # Split the PGN data by newline
+  lines <- unlist(strsplit(pgn, "\n"))
+  
+  # Find the line containing the moves (last line in this case)
+  moves_line <- lines[length(lines)]
+  
+  # Extract moves and timestamps using regex for both White and Black moves
+  matches <- regmatches(moves_line, gregexpr("\\d+\\.\\s+[^{}]+\\{\\[%clk\\s+[^\\}]+\\]|\\d+\\.\\.\\.\\s+[^{}]+\\{\\[%clk\\s+[^\\}]+\\]", moves_line))
+  moves <- unlist(matches)
+  
+  # Clean up the extracted moves and timestamps
+  moves_cleaned <- gsub("\\{\\[%clk\\s+([^\\}]+)\\]\\}", " \\1", moves)
+  
+  return(moves_cleaned)
+}
+
+# Get the cleaned moves and timestamps
+moves_and_timestamps <- extract_moves_and_timestamps(pgn_data)
+print(moves_and_timestamps)
+
+
+# Function to separate moves and timestamps
+separate_moves_and_timestamps <- function(data) {
+  # Initialize empty lists for moves and timestamps
+  moves <- c()
+  timestamps <- list()
+  
+  # Loop through each entry in the data
+  for (entry in data) {
+    # Extract move
+    if (grepl("^\\d+\\.\\s+", entry)) {
+      # White move format: number followed by dot and space
+      move <- sub("\\{\\[%clk\\s+([^\\}]+)\\]", "", sub("\\d+\\.\\s+([^{}]+)", "\\1", entry))
+    } else if (grepl("^\\d+\\.\\.\\.\\s+", entry)) {
+      # Black move format: number followed by three dots and space
+      move <- sub("\\{\\[%clk\\s+([^\\}]+)\\]", "", sub("\\d+\\.\\.\\.\\s+([^{}]+)", "\\1", entry))
+    } else {
+      next  # Skip entries that don't match move patterns (e.g., headers)
+    }
+    
+    # Extract timestamp
+    timestamp <- sub(".*\\{\\[%clk\\s+([^\\}]+)\\]", "\\1", entry)
+    
+    # Append to lists
+    moves <- c(moves, move)
+    timestamps <- c(timestamps, timestamp)
+  }
+  
+  # Concatenate moves into a single string
+  move_string <- paste(moves, collapse = " ")
+  
+  # Convert timestamps to a named list
+  timestamp_dict <- as.list(timestamps)
+  
+  return(list(moves = move_string, timestamps = timestamp_dict))
+}
+
+moves_and_timestamps_scholars_mate <- c(
+  "1. e4 {[%clk 0:09:59.7]",
+  "1... e5 {[%clk 0:09:58.6]",
+  "2. Qh5 {[%clk 0:09:56.3]",
+  "2... Nc6 {[%clk 0:09:56.1]",
+  "3. Bc4 {[%clk 0:09:51.5]",
+  "3... Nf6 {[%clk 0:09:46.6]",
+  "4. Qxf7# {[%clk 0:09:32.7]"
+)
+# Get the cleaned moves and timestamps
+temp <- separate_moves_and_timestamps(moves_and_timestamps_scholars_mate)
+
+# Print moves and timestamps
+print(temp$moves)
+print(temp$timestamps)
+
+
+
+library(chess)
+library(bigchess)
+# Analyze moves using Stockfish
+
+stockfish_path <- "/Program Files (x86)/Tarrasch/Engines/stockfish_11_x64"
+analyze_position(stockfish_path,temp$moves)
+
+```
