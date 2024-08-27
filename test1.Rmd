@@ -456,7 +456,6 @@ for move, score in scores:
 import chess
 import chess.engine
 move_scores = []
-
 def analyze_each_move(moves_str, depth=20, stockfish_path="/path/to/stockfish"):
     # Initialize the Stockfish engine
     with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
@@ -501,5 +500,74 @@ scores = analyze_each_move(moves_str, depth=20, stockfish_path="/Program Files (
 #plot Time against advantage gain
 #Use color to show the movenumber 
 #this can be used to analyze the effectiveness of the time per move gain
+
+```
+
+```{r}
+library(reticulate)
+py_run_string("
+import chess
+import chess.engine
+move_scores = []
+def analyze_each_move(moves_str, depth=20, stockfish_path='/path/to/stockfish'):
+    # Initialize the Stockfish engine
+    with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
+        # Set up the board
+        board = chess.Board()
+        
+        # Split the moves string into individual moves
+        moves = moves_str.split()
+        
+        # Store the scores for each move
+        
+        # Play and analyze each move
+        for move in moves:
+            # Play the move on the board
+            board.push_san(move)
+            
+            # Analyze the current position
+            info = engine.analyse(board, chess.engine.Limit(depth=depth))
+            # Check if the position results in a mate
+            mate_in = info['score'].relative.mate()
+            if mate_in is not None:
+              if mate_in == 0:
+                score = 10000  # or another appropriate value for immediate mate
+              else:
+                score = 10000 * (mate_in / abs(mate_in))
+            else:
+              # Otherwise, use the centipawn score
+              score = info['score'].relative.score() / 100
+                
+            # Adjust the score based on whose turn it is
+            if board.turn == chess.BLACK:
+                score = -score
+                
+            # Append the score and the move to the list
+            move_scores.append((move, score))
+            
+        return move_scores
+")
+
+# Call the Python function from R
+moves_str <- "e4 d5 d3 e5 Qf3 Qf6 h3 Qxf3 g4 Bc5 b3 Qxf2+ Kd1 a6 h4 Bxg4+ Nf3 Bxf3+ Be2 Qxe2#"
+stockfish_path <- "/Program Files (x86)/Tarrasch/Engines/stockfish_11_x64"
+results <- py$analyze_each_move(moves_str, depth=20, stockfish_path=stockfish_path)
+
+# Convert the Python list of tuples to an R data frame
+results_df <- as.data.frame(do.call(rbind, results), stringsAsFactors = FALSE)
+names(results_df) <- c("Move", "Score")
+```
+
+```{r}
+# Add a MoveNumber column to the data frame
+results_df$MoveNumber <- seq_len(nrow(results_df))
+
+# Plot using MoveNumber as the x-axis and log scale for the y-axis
+ggplot(data = results_df, aes(x = MoveNumber, y = as.numeric(Score))) + 
+    geom_line() +
+  ylim(-10,10)+
+    theme_minimal()
+
+
 
 ```
