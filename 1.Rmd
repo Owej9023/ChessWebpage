@@ -1,0 +1,27 @@
+---
+title: "Untitled"
+author: "Owen Dy"
+date: "2024-07-18"
+output: html_document
+---
+
+```{r}
+install.packages("writexl")
+library(writexl)
+
+dadexhibiton<-unique(dadexhibiton)
+
+
+# Filter rows that contain "United States"
+filtered_df <- dadexhibiton[grepl("United States|Canada|Mexico", dadexhibiton$Column1), ]
+
+
+split_csv <- strsplit(as.character(filtered_df$Column1), ",")
+csv_matrix <- do.call(rbind, split_csv)
+csv_df <- as.data.frame(csv_matrix, stringsAsFactors = FALSE)
+# Replace 'filtered_df' with your dataframe variable name
+# Replace 'output.xlsx' with your desired file name
+write_xlsx(csv_df, path = "output.xlsx")
+
+
+```

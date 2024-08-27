@@ -25,7 +25,7 @@ library(ggplot2)
 library(lubridate)
 library(hms)
 library(plotly)
-library(shinyWidgets)
+library(htmltools)
 library(stringr)
 
 
@@ -387,9 +387,119 @@ print(temp$timestamps)
 
 library(chess)
 library(bigchess)
+library(stockfish)
 # Analyze moves using Stockfish
 
 stockfish_path <- "/Program Files (x86)/Tarrasch/Engines/stockfish_11_x64"
-analyze_position(stockfish_path,temp$moves)
+GT<-analyze_game(stockfish_path,temp$moves,depth=20)
+
+```
+
+#convert the rlist to a python one
+```{r}
+py_list <- r_to_py(r_list)
+
+
+```
+
+
+#using python to get an accurate score for the position
+```{python}
+import chess
+import chess.engine
+
+def analyze_each_move(moves_str, depth=20, stockfish_path="/path/to/stockfish"):
+    # Initialize the Stockfish engine
+    with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
+        # Set up the board
+        board = chess.Board()
+        
+        # Split the moves string into individual moves
+        moves = moves_str.split()
+        
+        # Store the scores for each move
+        move_scores = []
+        
+        # Play and analyze each move
+        for move in moves:
+            # Play the move on the board
+            board.push_san(move)
+            
+            # Analyze the current position
+            info = engine.analyse(board, chess.engine.Limit(depth=depth))
+            
+            # Check if the position results in a mate
+            mate_in = info["score"].relative.mate()
+            if mate_in is not None:
+                if abs(mate_in) > 0:
+                    score = f"mate in {mate_in}"
+            else:
+                # Extract the score (in centipawns)
+                score = info["score"].relative.score(mate_score=10000) / 100
+            
+            # Store the score
+            move_scores.append((move, score))
+        
+        return move_scores
+
+# Example usage
+moves_str = "e4 d5 d3 e5 Qf3 Qf6 h3 Qxf3 g4 Bc5 b3 Qxf2+ Kd1 a6 h4 Bxg4+ Nf3 Bxf3+ Be2 Qxe2#"
+scores = analyze_each_move(moves_str, depth=20, stockfish_path="/Program Files (x86)/Tarrasch/Engines/stockfish_11_x64")
+
+# Print the scores for each move
+for move, score in scores:
+    print(f"Move: {move}, Score: {score}")
+
+```
+
+```{python}
+import chess
+import chess.engine
+move_scores = []
+
+def analyze_each_move(moves_str, depth=20, stockfish_path="/path/to/stockfish"):
+    # Initialize the Stockfish engine
+    with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
+        # Set up the board
+        board = chess.Board()
+        
+        # Split the moves string into individual moves
+        moves = moves_str.split()
+        
+        # Store the scores for each move
+        
+        # Play and analyze each move
+        for move in moves:
+            # Play the move on the board
+            board.push_san(move)
+            
+            # Analyze the current position
+            info = engine.analyse(board, chess.engine.Limit(depth=depth))
+            # Check if the position results in a mate
+            mate_in = info["score"].relative.mate()
+            if mate_in is not None:
+                # If it's a mate, use a large score value
+                score = 10000 * (mate_in / abs(mate_in))
+            else:
+                # Otherwise, use the centipawn score
+                score = info["score"].relative.score() / 100
+                
+            # Adjust the score based on whose turn it is
+            if board.turn == chess.BLACK:
+                score = -score
+                
+            # Append the score and the move to the list
+            move_scores.append((move, score))
+            
+        return move_scores
+
+# Example usage
+moves_str = "e4 d5 d3 e5 Qf3 Qf6 h3 Qxf3 g4 Bc5 b3 Qxf2+ Kd1 a6 h4 Bxg4+ Nf3 Bxf3+ Be2 Qxe2#"
+scores = analyze_each_move(moves_str, depth=20, stockfish_path="/Program Files (x86)/Tarrasch/Engines/stockfish_11_x64")
+
+
+#plot Time against advantage gain
+#Use color to show the movenumber 
+#this can be used to analyze the effectiveness of the time per move gain
 
 ```
