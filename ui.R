@@ -1,5 +1,12 @@
+#Currently In Progress
+#fix whatever made it not work (Constant)
+#Segment Server into functions so that everything that is code related is defined elsewhere
+
+
+
+
 #To Do Not easily
-#Elo Forecasting Algorithim
+#Elo Forecasting Algorithim ()Maybe use a genetic algorithim trained on randomly selected accounts from all elo ranges
 #Improve speed of MQI
 #Improve accuracy of MQI
 #write function to get the number of blunders, mistakes, innaccuracies, and missed checkmates and categorize them.
@@ -120,7 +127,8 @@ ui <- fluidPage(
                  actionButton("GetTimeBtn", "Get TimeData")
                ),
                mainPanel(
-                 plotOutput("TimePlotOutput")
+                 plotOutput("TimePlotOutput"),
+                 plotOutput("TimePlotOutput2")
                )
              )
     ),

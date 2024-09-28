@@ -244,6 +244,7 @@ for (value in combined_df$games$time_control) {
   set_value <- time_in_hhmm
   set_value1 <- time_in_hhmm
   
+  
   # Get the time_class for the current game
   current_time_class <- filtered_data$games$time_class[count]
   
@@ -287,7 +288,7 @@ zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
   if (length(inner_list) > 0) {
     df <- data.frame(
       time_per_move = unlist(inner_list),
-      move_number = seq_along(inner_list),
+      Move_Number = seq_along(inner_list),
       game_number = list_num,
       time_class = rep(filtered_data$games$time_class[list_num], length(inner_list))
     )
@@ -297,16 +298,215 @@ zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
   }
 }))
 
-# Print the first few rows of 'zzztest' to verify
-print(head(zzztest))
+
+```
+
+#original timestamp code
+```{r}
+# Use the provided functions to extract and separate moves and timestamps
+extract_moves_and_timestamps <- function(pgn) {
+  lines <- unlist(strsplit(pgn, "\n"))
+  moves_line <- lines[length(lines)]
+  matches <- regmatches(moves_line, gregexpr("\\d+\\.\\s+[^{}]+\\{\\[%clk\\s+[^\\}]+\\]|\\d+\\.\\.\\.\\s+[^{}]+\\{\\[%clk\\s+[^\\}]+\\]", moves_line))
+  moves <- unlist(matches)
+  moves_cleaned <- gsub("\\{\\[%clk\\s+([^\\}]+)\\]\\}", " \\1", moves)
+  return(moves_cleaned)
+}
+
+separate_moves_and_timestamps <- function(data) {
+  moves <- c()
+  timestamps <- list()
+  for (entry in data) {
+    if (grepl("^\\d+\\.\\s+", entry)) {
+      move <- sub("\\{\\[%clk\\s+([^\\}]+)\\]", "", sub("\\d+\\.\\s+([^{}]+)", "\\1", entry))
+    } else if (grepl("^\\d+\\.\\.\\.\\s+", entry)) {
+      move <- sub("\\{\\[%clk\\s+([^\\}]+)\\]", "", sub("\\d+\\.\\.\\.\\s+([^{}]+)", "\\1", entry))
+    } else {
+      next
+    }
+    timestamp <- sub(".*\\{\\[%clk\\s+([^\\}]+)\\]", "\\1", entry)
+    moves <- c(moves, move)
+    timestamps <- c(timestamps, timestamp)
+  }
+  move_string <- paste(moves, collapse = " ")
+  timestamp_dict <- as.list(timestamps)
+  return(list(moves = moves, timestamps = timestamp_dict))
+}
+
+# Initialize lists and counters
+timepermove <- list()
+moves_list <- list()
+count <- 0
+
+# Loop through each game in combined_df
+for (pgn in combined_df$games$pgn[1]) {
+  count <- count + 1
+  
+  # Extract moves and timestamps from the PGN data
+  extracted_data <- extract_moves_and_timestamps(pgn)
+  separated_data <- separate_moves_and_timestamps(extracted_data)
+  
+  # Extract the moves and timestamps
+  moves <- separated_data$moves
+  timestamps <- separated_data$timestamps
+  
+  # Initialize a list to store time per move within the outer loop
+  timepermoveinterior <- list()
+  movesinterior <- list()
+  
+  # Convert timestamps to numeric and calculate time per move
+  previous_time <- as.numeric(as.POSIXct("00:00", format="%M:%S"))
+  for (i in seq_along(timestamps)) {
+    current_time <- as.numeric(as.POSIXct(timestamps[[i]], format="%M:%S"))
+    time_per_move <- round(previous_time - current_time, 1)
+    timepermoveinterior <- c(timepermoveinterior, time_per_move)
+    movesinterior <- c(movesinterior, moves[i])
+    previous_time <- current_time
+  }
+  
+  # Add time_per_move, move, and time_class for the current game to the respective lists
+  timepermove <- c(timepermove, list(timepermoveinterior))
+  moves_list <- c(moves_list, list(movesinterior))
+}
+
+# Combine all games into zzztest dataframe
+zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
+  inner_list <- timepermove[[list_num]]
+  move_list <- moves_list[[list_num]]
+  if (length(inner_list) > 0) {
+    df <- data.frame(
+      time_per_move = unlist(inner_list),
+      Move_Number = seq_along(inner_list),
+      game_number = list_num,
+      time_class = rep(filtered_data$games$time_class[list_num], length(inner_list)),
+      Move = unlist(move_list)
+    )
+    return(df)
+  } else {
+    return(NULL)
+  }
+}))
+
+
+```
+#experemental timestamp code
+Current issue is the first move not correctly registering clearing memory and restartign to try to isolate the issue
+```{r}
+extract_moves_and_timestamps <- function(pgn) {
+  lines <- unlist(strsplit(pgn, "\n"))
+  moves_line <- lines[length(lines)]
+  matches <- regmatches(moves_line, gregexpr("\\d+\\.\\s+[^{}]+\\{\\[%clk\\s+[^\\}]+\\]|\\d+\\.\\.\\.\\s+[^{}]+\\{\\[%clk\\s+[^\\}]+\\]", moves_line))
+  moves <- unlist(matches)
+  moves_cleaned <- gsub("\\{\\[%clk\\s+([^\\}]+)\\]\\}", " \\1", moves)
+  return(moves_cleaned)
+}
+
+separate_moves_and_timestamps <- function(data) {
+  moves <- c()
+  timestamps <- list()
+  for (entry in data) {
+    if (grepl("^\\d+\\.\\s+", entry)) {
+      move <- sub("\\{\\[%clk\\s+([^\\}]+)\\]", "", sub("\\d+\\.\\s+([^{}]+)", "\\1", entry))
+    } else if (grepl("^\\d+\\.\\.\\.\\s+", entry)) {
+      move <- sub("\\{\\[%clk\\s+([^\\}]+)\\]", "", sub("\\d+\\.\\.\\.\\s+([^{}]+)", "\\1", entry))
+    } else {
+      next
+    }
+    timestamp <- sub(".*\\{\\[%clk\\s+([^\\}]+)\\]", "\\1", entry)
+    moves <- c(moves, move)
+    timestamps <- c(timestamps, timestamp)
+  }
+  move_string <- paste(moves, collapse = " ")
+  timestamp_dict <- as.list(timestamps)
+  return(list(moves = moves, timestamps = timestamp_dict))
+}
+
+# Initialize lists and counters
+timepermove <- list()
+moves_list <- list()
+count <- 0
+
+# Loop through each game in combined_df
+library(lubridate)
+library(hms)  # For handling time without dates
+
+# Initialize lists and counters
+timepermove <- list()
+moves_list <- list()
+count <- 0
+
+# Loop through each game in combined_df
+for (pgn in combined_df$games$pgn[1]) {
+  count <- count + 1
+  
+  # Extract moves and timestamps from the PGN data
+  extracted_data <- extract_moves_and_timestamps(pgn)
+  separated_data <- separate_moves_and_timestamps(extracted_data)
+  
+  # Extract the moves and timestamps
+  moves <- separated_data$moves
+  timestamps <- separated_data$timestamps
+  
+  # Initialize a list to store time per move within the outer loop
+  timepermoveinterior <- list()
+  movesinterior <- list()
+
+  # Initialize the previous time with the starting time control in seconds
+  # Convert time control (e.g., 600, 180) to an hms object
+  initial_time <- as.numeric(combined_df$games$time_control[count])
+  previous_time <- as_hms(initial_time)  # Use the starting time control for the first move
+  
+  # Loop through timestamps to calculate time per move
+  for (i in seq_along(timestamps)) {
+    # Convert the current timestamp to an hms object
+    current_time <- as_hms(timestamps[[i]])
+    print(current_time)
+    # Calculate the time per move in seconds (including milliseconds)
+    time_per_move <- as.numeric(difftime(previous_time, current_time, units = "secs"))
+    print(time_per_move)
+    # Round the time per move to 1 decimal place and store it
+    time_per_move <- round(time_per_move, 1)
+    timepermoveinterior <- c(timepermoveinterior, time_per_move)
+    
+    # Store the move
+    movesinterior <- c(movesinterior, moves[i])
+    
+    # Update previous time for the next iteration
+    previous_time <- current_time
+  }
+  
+  # Add time_per_move, move, and time_class for the current game to the respective lists
+  timepermove <- c(timepermove, list(timepermoveinterior))
+  moves_list <- c(moves_list, list(movesinterior))
+}
+
+# Combine all games into zzztest dataframe
+zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
+  inner_list <- timepermove[[list_num]]
+  move_list <- moves_list[[list_num]]
+  if (length(inner_list) > 0) {
+    df <- data.frame(
+      time_per_move = unlist(inner_list),
+      Move_Number = seq_along(inner_list),
+      game_number = list_num,
+      time_class = rep(filtered_data$games$time_class[list_num], length(inner_list)),
+      Move = unlist(move_list)
+    )
+    return(df)
+  } else {
+    return(NULL)
+  }
+}))
+
 
 
 ```
 
-```{r}
 
+
+```{r}
 # Sample PGN data
-pgn_data <- filtered_data$games$pgn[1]
+pgn_data <- filtered_data$games$pgn
 
 # Extract moves and timestamps
 extract_moves_and_timestamps <- function(pgn) {
@@ -377,13 +577,7 @@ moves_and_timestamps_scholars_mate <- c(
   "4. Qxf7# {[%clk 0:09:32.7]"
 )
 # Get the cleaned moves and timestamps
-temp <- separate_moves_and_timestamps(moves_and_timestamps_scholars_mate)
-
-# Print moves and timestamps
-print(temp$moves)
-print(temp$timestamps)
-
-
+temp <- separate_moves_and_timestamps(moves_and_timestamps)
 
 library(chess)
 library(bigchess)
@@ -391,66 +585,10 @@ library(stockfish)
 # Analyze moves using Stockfish
 
 stockfish_path <- "/Program Files (x86)/Tarrasch/Engines/stockfish_11_x64"
-GT<-analyze_game(stockfish_path,temp$moves,depth=20)
 
 ```
-
-#convert the rlist to a python one
-```{r}
-py_list <- r_to_py(r_list)
-
-
-```
-
 
 #using python to get an accurate score for the position
-```{python}
-import chess
-import chess.engine
-
-def analyze_each_move(moves_str, depth=20, stockfish_path="/path/to/stockfish"):
-    # Initialize the Stockfish engine
-    with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
-        # Set up the board
-        board = chess.Board()
-        
-        # Split the moves string into individual moves
-        moves = moves_str.split()
-        
-        # Store the scores for each move
-        move_scores = []
-        
-        # Play and analyze each move
-        for move in moves:
-            # Play the move on the board
-            board.push_san(move)
-            
-            # Analyze the current position
-            info = engine.analyse(board, chess.engine.Limit(depth=depth))
-            
-            # Check if the position results in a mate
-            mate_in = info["score"].relative.mate()
-            if mate_in is not None:
-                if abs(mate_in) > 0:
-                    score = f"mate in {mate_in}"
-            else:
-                # Extract the score (in centipawns)
-                score = info["score"].relative.score(mate_score=10000) / 100
-            
-            # Store the score
-            move_scores.append((move, score))
-        
-        return move_scores
-
-# Example usage
-moves_str = "e4 d5 d3 e5 Qf3 Qf6 h3 Qxf3 g4 Bc5 b3 Qxf2+ Kd1 a6 h4 Bxg4+ Nf3 Bxf3+ Be2 Qxe2#"
-scores = analyze_each_move(moves_str, depth=20, stockfish_path="/Program Files (x86)/Tarrasch/Engines/stockfish_11_x64")
-
-# Print the scores for each move
-for move, score in scores:
-    print(f"Move: {move}, Score: {score}")
-
-```
 
 ```{python}
 import chess
@@ -503,6 +641,36 @@ scores = analyze_each_move(moves_str, depth=20, stockfish_path="/Program Files (
 
 ```
 
+
+
+#first working reticulate score analysis
+```{r}
+rm(results_df_scorea)
+# Split the PGN data into separate games
+pgn_list <- strsplit(combined_df$games$pgn, "\n\n")
+
+# Initialize lists to store moves and timestamps
+all_moves <- list()
+all_timestamps <- list()
+
+# Loop through each game and extract moves and timestamps
+for (i in seq_along(pgn_list)) {
+  game_pgn <- pgn_list[[i]]
+  
+  # Extract moves and timestamps for the current game
+  temp_aa <- extract_moves_and_timestamps(game_pgn)
+  temp_aa <- separate_moves_and_timestamps(temp_aa)
+  
+  # Store the results in the lists
+  all_moves[[i]] <- temp_aa$moves
+  all_timestamps[[i]] <- temp_aa$timestamps
+}
+
+# Combine the lists into single objects
+aa <- unlist(all_moves)
+aatime <- unlist(all_timestamps)
+```
+
 ```{r}
 library(reticulate)
 py_run_string("
@@ -548,26 +716,163 @@ def analyze_each_move(moves_str, depth=20, stockfish_path='/path/to/stockfish'):
         return move_scores
 ")
 
-# Call the Python function from R
-moves_str <- "e4 d5 d3 e5 Qf3 Qf6 h3 Qxf3 g4 Bc5 b3 Qxf2+ Kd1 a6 h4 Bxg4+ Nf3 Bxf3+ Be2 Qxe2#"
-stockfish_path <- "/Program Files (x86)/Tarrasch/Engines/stockfish_11_x64"
-results <- py$analyze_each_move(moves_str, depth=20, stockfish_path=stockfish_path)
+# Initialize an empty dataframe
+results_df_scorea <- data.frame(Move = character(), `Move Number` = numeric(), Score = numeric(), stringsAsFactors = FALSE)
 
-# Convert the Python list of tuples to an R data frame
-results_df <- as.data.frame(do.call(rbind, results), stringsAsFactors = FALSE)
-names(results_df) <- c("Move", "Score")
+# Loop through each game
+for (game in aa[1]) {
+  # Analyze each move in the game
+  aaresults <- py$analyze_each_move(game, depth=20, stockfish_path=stockfish_path)
+  
+  # Convert the result to a dataframe
+  game_results_df <- as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE)
+  
+  # Set the column names
+  names(game_results_df) <- c("Move", "Score")
+  
+  # Append the results to the main dataframe
+  results_df_scorea <- rbind(results_df_scorea, game_results_df)
+}
+
+```
+
+
+```{r}
+#time per move is fucked rn
+#adjust score to reflect user vs op
+
+# Extract rows from zzztest
+extractlength<-length(results_df_scorea)
+zzztest_subset <- zzztest[1:26, ]
+
+# Combine the extracted columns with the other data frame
+merged_data_complete <- cbind(zzztest_subset, results_df_scorea)
+# Initialize lists and counters
+count <- 0
+usernames <- list()  # Use a list to collect usernames
+
+# Loop through each game number in the merged data
+for (i in seq_along(merged_data_complete$game_number)) {
+  count <- count + 1
+  
+  # Extract the game number for current iteration
+  gamenumber <- merged_data_complete$game_number[i]
+  
+  # Check if the count is odd or even to alternate between black and white
+  if (count %% 2 == 1) {
+    # For odd counts, assign black player's username
+    usernames[[count]] <- combined_df$games$black$username[gamenumber]
+  } else {
+    # For even counts, assign white player's username
+    usernames[[count]] <- combined_df$games$white$username[gamenumber]
+  }
+}
+
+# Convert the list of usernames to a data frame
+username_df <- data.frame(username = unlist(usernames), stringsAsFactors = FALSE)
+
+# Combine the username data frame with the merged data
+merged_data_complete2 <- cbind(username_df, merged_data_complete)
+merged_data_complete2[6] <- NULL
+
+
+
+```
+
+
+
+
+
+```{r}
+
+# Loop through each game
+for (i in seq_along(aa[1:10])) {
+  game <- aa[i]
+  
+  # Analyze each move in the game
+  aaresults <- py$analyze_each_move(game, depth=20, stockfish_path=stockfish_path)
+  
+  # Convert the result to a dataframe
+  game_results_df <- as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE)
+  
+  # Set the column names
+  names(game_results_df) <- c("Move", "Score")
+  
+  # Add a Move Number column
+  game_results_df$`Move Number` <- 1:nrow(game_results_df)
+  
+  # Add a Turn column to indicate whose move it is: White or Black
+  game_results_df$Turn <- ifelse(game_results_df$`Move Number` %% 2 == 1, "White", "Black")
+  
+  # Add Game_Number column to identify the game
+  game_results_df$Game_Number <- i
+  
+  # Fetch usernames from combined_df for the current game
+  white_username <- combined_df$games$white_username[i]
+  black_username <- combined_df$games$black_username[i]
+  
+  # Assign the correct username based on the Turn column
+  game_results_df$Username <- ifelse(game_results_df$Turn == "White", white_username, black_username)
+  
+  # Append the results to the main dataframe
+  results_df_scorea <- rbind(results_df_scorea, game_results_df)
+}
+
+# Print the final dataframe
+print(results_df_scorea)
+
+
+
 ```
 
 ```{r}
-# Add a MoveNumber column to the data frame
-results_df$MoveNumber <- seq_len(nrow(results_df))
+library(plotly)
 
-# Plot using MoveNumber as the x-axis and log scale for the y-axis
-ggplot(data = results_df, aes(x = MoveNumber, y = as.numeric(Score))) + 
-    geom_line() +
-  ylim(-10,10)+
-    theme_minimal()
+# Flatten the Score column to a numeric vector
+merged_data_complete$Score <- as.numeric(unlist(merged_data_complete$Score))
+
+# Apply the logarithmic transformation
+merged_data_complete$Log_Score <- log10(abs(merged_data_complete$Score) + 1) * sign(merged_data_complete$Score)
 
 
+# Create a 3D scatter plot with plotly
+plot_ly(data = merged_data_complete, 
+        x = ~zmovenum, 
+        y = ~ztime, 
+        z = ~Log_Score, 
+        type = 'scatter3d', 
+        mode = 'markers',
+        marker = list(size = 4, color = ~Log_Score, colorscale = 'Viridis')) %>%
+  layout(scene = list(xaxis = list(title = "Move Number"),
+                      yaxis = list(title = "Time"),
+                      zaxis = list(title = "Log10(Score)")))
+
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Convert the Move column to a character vector if it's not already
+merged_data_complete$Move <- as.character(unlist(merged_data_complete$Move))
+
+# Filter data to keep only those facets with at least 40 points
+filtered_data <- merged_data_complete %>%
+  group_by(Move) %>%
+  filter(n() >= 40)
+
+# Create the plot with filtered data
+ggplot(filtered_data, aes(x = time_per_move, y = Score, color = Move)) +
+  geom_point() +
+  facet_wrap(~Move, scales = "free_y") +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_text(size = 12),  # Keep x-axis title
+    axis.title.y = element_text(size = 12),  # Keep y-axis title
+    axis.text.x = element_blank(),            # Remove x-axis text
+    strip.text = element_text(size = 10),     # Show facet labels (titles) with specified size
+    legend.position = "none"                  # Remove legend
+  ) +
+  labs(x = "Time", y = "Score")
 
 ```
