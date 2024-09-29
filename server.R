@@ -17,6 +17,8 @@ source("Server_Logic_Chess.R")
 
 server <- function(input, output, session) {
 
+  combined_df <- reactiveVal(NULL)
+  
   observeEvent(input$getDataBtn, {
     chess_username <- input$username
     desired_rows <- input$numberofgames
@@ -52,6 +54,11 @@ server <- function(input, output, session) {
       filter(grepl(paste(game_types, collapse = "|"), games$time_class, ignore.case = TRUE),
              games$rules == "chess", 
              games$rated == TRUE)
+    
+    
+    #PLAYING WITH REACTIVE VALUES
+    combined_df(combined_df)
+    
     
     # Process each game to extract PGN values and metadata
     result_list <- lapply(seq_len(nrow(combined_df$games)), function(i) {
@@ -212,7 +219,10 @@ server <- function(input, output, session) {
   })
   
   #Logic for time
+  #currently a little fucky and dosent work because of dataframe mismatching and incorrret row arguments
   observeEvent(input$GetTimeBtn, {
+    #Get Reactive Elements
+    combined_df<-combined_df()
     
     # Initialize progress bar
     progress <- shiny::Progress$new()
@@ -304,7 +314,7 @@ server <- function(input, output, session) {
       timepermove <- c(timepermove, list(timepermoveinterior))
     }
     
-    progress$close()
+    #progress$close()
     
     # Combine all games into zzztest dataframe
     zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
@@ -322,6 +332,203 @@ server <- function(input, output, session) {
       }
     }))
     
+    
+    #Do the python thing here
+    
+    #rm(results_df_scorea)
+    # Split the PGN data into separate games
+    pgn_list <- strsplit(combined_df$games$pgn, "\n\n")
+    
+    # Initialize lists to store moves and timestamps
+    all_moves <- list()
+    all_timestamps <- list()
+    
+    # Loop through each game and extract moves and timestamps
+    for (i in seq_along(pgn_list)) {
+      game_pgn <- pgn_list[[i]]
+      
+      # Extract moves and timestamps for the current game
+      temp_aa <- extract_moves_and_timestamps(game_pgn)
+      temp_aa <- separate_moves_and_timestamps(temp_aa)
+      
+      # Store the results in the lists
+      all_moves[[i]] <- temp_aa$moves
+      all_timestamps[[i]] <- temp_aa$timestamps
+    }
+    
+    library(reticulate)
+    py_run_string("
+import chess
+import chess.engine
+move_scores = []
+def analyze_each_move(moves_str, depth=20, stockfish_path='/path/to/stockfish'):
+    # Initialize the Stockfish engine
+    with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
+        # Set up the board
+        board = chess.Board()
+        
+        # Split the moves string into individual moves
+        moves = moves_str.split()
+        
+        # Store the scores for each move
+        
+        # Play and analyze each move
+        for move in moves:
+            # Play the move on the board
+            board.push_san(move)
+            
+            # Analyze the current position
+            info = engine.analyse(board, chess.engine.Limit(depth=depth))
+            # Check if the position results in a mate
+            mate_in = info['score'].relative.mate()
+            if mate_in is not None:
+              if mate_in == 0:
+                score = 10000  # or another appropriate value for immediate mate
+              else:
+                score = 10000 * (mate_in / abs(mate_in))
+            else:
+              # Otherwise, use the centipawn score
+              score = info['score'].relative.score() / 100
+                
+            # Adjust the score based on whose turn it is
+            if board.turn == chess.BLACK:
+                score = -score
+                
+            # Append the score and the move to the list
+            move_scores.append((move, score))
+            
+        return move_scores
+")
+    
+    
+    #########End of the python
+    
+    
+    
+    
+    
+    
+    
+    
+    # Initialize an empty list to store combined data for each game
+    combined_data <- list()
+    
+    # Loop through each game and combine moves and timestamps into a data frame
+    for (i in seq_along(all_moves)) {
+      # Get moves and timestamps for the current game
+      moves <- all_moves[[i]]
+      timestamps <- all_timestamps[[i]]
+      
+      # Check if the number of moves and timestamps are equal
+      if (length(moves) == length(timestamps)) {
+        # Extract only the timestamp from the format {[%clk 0:09:59.7]}
+        cleaned_timestamps <- gsub(".*\\{\\[%clk\\s+([^\\}]+)\\]\\}", "\\1", timestamps)
+        
+        # Create a data frame for the current game with moves and cleaned timestamps
+        game_data <- data.frame(
+          Move = moves,
+          Timestamp = cleaned_timestamps,
+          stringsAsFactors = FALSE
+        )
+      } else {
+        # Handle the case where moves and timestamps are not equal
+        warning(paste("Mismatch between moves and timestamps for game", i))
+        
+        # To avoid error, truncate the longer list to match the shorter one
+        min_length <- min(length(moves), length(timestamps))
+        
+        # Extract only the timestamp from the format {[%clk 0:09:59.7]}
+        cleaned_timestamps <- gsub(".*\\{\\[%clk\\s+([^\\}]+)\\]\\}", "\\1", timestamps[1:min_length])
+        
+        # Create a data frame with the truncated moves and cleaned timestamps
+        game_data <- data.frame(
+          Move = moves[1:min_length],
+          Timestamp = cleaned_timestamps,
+          stringsAsFactors = FALSE
+        )
+      }
+      
+      # Add the game data frame to the combined list
+      combined_data[[i]] <- game_data
+    }
+    
+    NumberOfGames <- input$numGames
+    # Initialize an empty list to store combined data for each game
+    combined_data <- vector("list", length(all_moves)) # Pre-allocate list for efficiency
+    
+    # Loop through each game and combine moves and timestamps into a data frame
+    for (i in seq_along(all_moves)) {
+      moves <- all_moves[[i]]
+      timestamps <- all_timestamps[[i]]
+      
+      # Handle length mismatch and clean timestamps
+      min_length <- min(length(moves), length(timestamps))
+      cleaned_timestamps <- clean_timestamp(timestamps[1:min_length])
+      
+      # Create a data frame for the current game with moves and cleaned timestamps
+      game_data <- data.frame(
+        Move = moves[1:min_length],
+        Timestamp = cleaned_timestamps,
+        stringsAsFactors = FALSE
+      )
+      
+      # Add the game data frame to the combined list
+      combined_data[[i]] <- game_data
+    }
+    
+    combined_data <- lapply(combined_data, function(game_data) {
+      game_data$Move <- clean_moves(game_data$Move)
+      game_data
+    })
+    
+    # Reset results_df_scorea at the start
+    results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
+    
+    # Extract moves from the combined data for the first game and analyze
+    moves_string <- paste(unlist(combined_data[[NumberOfGames]]$Move), collapse = " ")
+    
+    # Analyze the combined moves string
+    tryCatch({
+      aaresults <- py$analyze_each_move(moves_string, depth = 20, stockfish_path = stockfish_path)
+      
+      # Convert the results to a dataframe and remove duplicates
+      game_results_df <- unique(as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE))
+      names(game_results_df) <- c("Move", "Score")
+      
+      # Append results to the main dataframe
+      results_df_scorea <- rbind(results_df_scorea, game_results_df)
+    }, error = function(e) {
+      message(paste("Error analyzing moves:", e$message))
+    })
+    
+    # Extract and merge with zzztest
+    zzztest_subset <- zzztest[1:length(results_df_scorea$Move), ]
+    merged_data_complete <- cbind(zzztest_subset, results_df_scorea)
+    
+    # Initialize usernames using a vectorized approach
+    usernames <- ifelse(seq_along(merged_data_complete$game_number) %% 2 == 1,
+                        combined_df$games$black$username[merged_data_complete$game_number],
+                        combined_df$games$white$username[merged_data_complete$game_number])
+    
+    # Combine the username data frame with the merged data
+    merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors = FALSE), merged_data_complete)
+    
+    # Remove the 6th column if necessary
+    merged_data_complete2 <- merged_data_complete2[, -6]
+    merged_data_complete2$Score<-as.numeric(merged_data_complete2$Score)
+    
+    # Convert the 'Score' column to a numeric vector (if it's not already)
+    merged_data_complete2$Score <- unlist(merged_data_complete2$Score)
+    
+    # Identify even positions
+    even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
+    
+    # Multiply only the even positions by -1
+    merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
+    
+    progress$close()
+    
+    
     output$TimePlotOutput <- renderPlot({
       ggplot(data = zzztest, aes(x = move_number, y = time_per_move, color = time_class)) + 
         geom_smooth()+
@@ -329,8 +536,18 @@ server <- function(input, output, session) {
         xlab("Move Number") +
         theme_minimal()
     })
+    
+    output$TimePlotOutput2 <- renderPlot({
+      ggplot(merged_data_complete2, aes(x = move_number, y = (Score), size = time_per_move, color = username)) +
+        geom_point(alpha = 0.5) +
+        ylim(-10,10)+
+        labs(x = "Move Number", y = "Evaluation Score", size = "Time Spent (s)", color = "Player") +
+        ggtitle("Bubble Plot of Move Number and Evaluation Score with Time Spent and Players") +
+        theme_minimal()
+    })
+    
   })
-  
+
   
   
 }

@@ -390,7 +390,7 @@ zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
 
 ```
 #experemental timestamp code
-Current issue is the first move not correctly registering clearing memory and restartign to try to isolate the issue
+#
 ```{r}
 extract_moves_and_timestamps <- function(pgn) {
   lines <- unlist(strsplit(pgn, "\n"))
@@ -502,7 +502,129 @@ zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
 
 ```
 
+#Updated Timestamp
+```{r}
+library(lubridate)
+library(hms)  # For handling time without dates
+library(utils)  # For txtProgressBar
 
+extract_moves_and_timestamps <- function(pgn) {
+  lines <- unlist(strsplit(pgn, "\n"))
+  moves_line <- lines[length(lines)]
+  matches <- regmatches(moves_line, gregexpr("\\d+\\.\\s+[^{}]+\\{\\[%clk\\s+[^\\}]+\\]|\\d+\\.\\.\\.\\s+[^{}]+\\{\\[%clk\\s+[^\\}]+\\]", moves_line))
+  moves <- unlist(matches)
+  moves_cleaned <- gsub("\\{\\[%clk\\s+([^\\}]+)\\]\\}", " \\1", moves)
+  return(moves_cleaned)
+}
+
+separate_moves_and_timestamps <- function(data) {
+  moves <- c()
+  timestamps <- list()
+  for (entry in data) {
+    if (grepl("^\\d+\\.\\s+", entry)) {
+      move <- sub("\\{\\[%clk\\s+([^\\}]+)\\]", "", sub("\\d+\\.\\s+([^{}]+)", "\\1", entry))
+    } else if (grepl("^\\d+\\.\\.\\.\\s+", entry)) {
+      move <- sub("\\{\\[%clk\\s+([^\\}]+)\\]", "", sub("\\d+\\.\\.\\.\\s+([^{}]+)", "\\1", entry))
+    } else {
+      next
+    }
+    timestamp <- sub(".*\\{\\[%clk\\s+([^\\}]+)\\]", "\\1", entry)
+    moves <- c(moves, move)
+    timestamps <- c(timestamps, timestamp)
+  }
+  move_string <- paste(moves, collapse = " ")
+  timestamp_dict <- as.list(timestamps)
+  return(list(moves = moves, timestamps = timestamp_dict))
+}
+
+# Initialize lists and counters
+timepermove <- list()
+moves_list <- list()
+count <- 0
+
+# Create a progress bar
+total_games <- nrow(combined_df$games)
+progress_bar <- txtProgressBar(min = 0, max = total_games, style = 3)
+
+# Loop through each game in combined_df
+for (pgn in combined_df$games$pgn) {
+  count <- count + 1
+  
+  # Extract moves and timestamps from the PGN data
+  extracted_data <- extract_moves_and_timestamps(pgn)
+  separated_data <- separate_moves_and_timestamps(extracted_data)
+  
+  # Extract the moves and timestamps
+  moves <- separated_data$moves
+  timestamps <- separated_data$timestamps
+  
+  # Initialize a list to store time per move within the outer loop
+  timepermoveinterior <- list()
+  movesinterior <- list()
+  
+  # Initial time controls for each player (in seconds)
+  initial_time <- as.numeric(strsplit(combined_df$games$time_control[count], "\\+")[[1]][1])
+  white_previous_time <- as_hms(initial_time)
+  black_previous_time <- as_hms(initial_time)
+  
+  # Loop through timestamps to calculate time per move, tracking each player's clock separately
+  for (i in seq_along(timestamps)) {
+    current_move <- moves[i]
+    current_timestamp <- as_hms(timestamps[[i]])
+    
+    if (i %% 2 == 1) {  # Odd index means it's White's move
+      time_per_move <- as.numeric(difftime(white_previous_time, current_timestamp, units = "secs"))
+      white_previous_time <- current_timestamp
+    } else {  # Even index means it's Black's move
+      time_per_move <- as.numeric(difftime(black_previous_time, current_timestamp, units = "secs"))
+      black_previous_time <- current_timestamp
+    }
+    
+    # Round the time per move to 1 decimal place and store it
+    time_per_move <- round(time_per_move, 1)
+    timepermoveinterior <- c(timepermoveinterior, time_per_move)
+    
+    # Store the move
+    movesinterior <- c(movesinterior, current_move)
+  }
+  
+  # Add time_per_move, move, and time_class for the current game to the respective lists
+  timepermove <- c(timepermove, list(timepermoveinterior))
+  moves_list <- c(moves_list, list(movesinterior))
+
+  # Update the progress bar
+  setTxtProgressBar(progress_bar, count)
+}
+
+# Close the progress bar
+close(progress_bar)
+
+# Combine all games into zzztest dataframe
+zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
+  inner_list <- timepermove[[list_num]]
+  move_list <- moves_list[[list_num]]
+  if (length(inner_list) > 0) {
+    df <- data.frame(
+      time_per_move = unlist(inner_list),
+      Move_Number = seq_along(inner_list),
+      game_number = list_num,
+      time_class = rep(combined_df$games$time_class[list_num], length(inner_list)),
+      Move = unlist(move_list)
+    )
+    return(df)
+  } else {
+    return(NULL)
+  }
+}))
+
+
+library(chess)
+library(bigchess)
+library(stockfish)
+# Analyze moves using Stockfish
+
+stockfish_path <- "/Program Files (x86)/Tarrasch/Engines/stockfish_11_x64"
+```
 
 ```{r}
 # Sample PGN data
@@ -579,12 +701,6 @@ moves_and_timestamps_scholars_mate <- c(
 # Get the cleaned moves and timestamps
 temp <- separate_moves_and_timestamps(moves_and_timestamps)
 
-library(chess)
-library(bigchess)
-library(stockfish)
-# Analyze moves using Stockfish
-
-stockfish_path <- "/Program Files (x86)/Tarrasch/Engines/stockfish_11_x64"
 
 ```
 
@@ -630,20 +746,15 @@ def analyze_each_move(moves_str, depth=20, stockfish_path="/path/to/stockfish"):
             
         return move_scores
 
-# Example usage
-moves_str = "e4 d5 d3 e5 Qf3 Qf6 h3 Qxf3 g4 Bc5 b3 Qxf2+ Kd1 a6 h4 Bxg4+ Nf3 Bxf3+ Be2 Qxe2#"
-scores = analyze_each_move(moves_str, depth=20, stockfish_path="/Program Files (x86)/Tarrasch/Engines/stockfish_11_x64")
-
-
-#plot Time against advantage gain
-#Use color to show the movenumber 
-#this can be used to analyze the effectiveness of the time per move gain
 
 ```
 
 
 
+
+
 #first working reticulate score analysis
+
 ```{r}
 rm(results_df_scorea)
 # Split the PGN data into separate games
@@ -666,12 +777,6 @@ for (i in seq_along(pgn_list)) {
   all_timestamps[[i]] <- temp_aa$timestamps
 }
 
-# Combine the lists into single objects
-aa <- unlist(all_moves)
-aatime <- unlist(all_timestamps)
-```
-
-```{r}
 library(reticulate)
 py_run_string("
 import chess
@@ -716,70 +821,165 @@ def analyze_each_move(moves_str, depth=20, stockfish_path='/path/to/stockfish'):
         return move_scores
 ")
 
-# Initialize an empty dataframe
-results_df_scorea <- data.frame(Move = character(), `Move Number` = numeric(), Score = numeric(), stringsAsFactors = FALSE)
+```
 
-# Loop through each game
-for (game in aa[1]) {
-  # Analyze each move in the game
-  aaresults <- py$analyze_each_move(game, depth=20, stockfish_path=stockfish_path)
+
+
+```{r}
+# Initialize an empty list to store combined data for each game
+combined_data <- list()
+
+# Loop through each game and combine moves and timestamps into a data frame
+for (i in seq_along(all_moves)) {
+  # Get moves and timestamps for the current game
+  moves <- all_moves[[i]]
+  timestamps <- all_timestamps[[i]]
   
-  # Convert the result to a dataframe
-  game_results_df <- as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE)
+  # Check if the number of moves and timestamps are equal
+  if (length(moves) == length(timestamps)) {
+    # Extract only the timestamp from the format {[%clk 0:09:59.7]}
+    cleaned_timestamps <- gsub(".*\\{\\[%clk\\s+([^\\}]+)\\]\\}", "\\1", timestamps)
+    
+    # Create a data frame for the current game with moves and cleaned timestamps
+    game_data <- data.frame(
+      Move = moves,
+      Timestamp = cleaned_timestamps,
+      stringsAsFactors = FALSE
+    )
+  } else {
+    # Handle the case where moves and timestamps are not equal
+    warning(paste("Mismatch between moves and timestamps for game", i))
+    
+    # To avoid error, truncate the longer list to match the shorter one
+    min_length <- min(length(moves), length(timestamps))
+    
+    # Extract only the timestamp from the format {[%clk 0:09:59.7]}
+    cleaned_timestamps <- gsub(".*\\{\\[%clk\\s+([^\\}]+)\\]\\}", "\\1", timestamps[1:min_length])
+    
+    # Create a data frame with the truncated moves and cleaned timestamps
+    game_data <- data.frame(
+      Move = moves[1:min_length],
+      Timestamp = cleaned_timestamps,
+      stringsAsFactors = FALSE
+    )
+  }
   
-  # Set the column names
-  names(game_results_df) <- c("Move", "Score")
-  
-  # Append the results to the main dataframe
-  results_df_scorea <- rbind(results_df_scorea, game_results_df)
+  # Add the game data frame to the combined list
+  combined_data[[i]] <- game_data
 }
-
 ```
 
 
 ```{r}
-#time per move is fucked rn
-#adjust score to reflect user vs op
+NumberOfGames <- 3
+# Initialize an empty list to store combined data for each game
+combined_data <- vector("list", length(all_moves)) # Pre-allocate list for efficiency
 
-# Extract rows from zzztest
-extractlength<-length(results_df_scorea)
-zzztest_subset <- zzztest[1:26, ]
-
-# Combine the extracted columns with the other data frame
-merged_data_complete <- cbind(zzztest_subset, results_df_scorea)
-# Initialize lists and counters
-count <- 0
-usernames <- list()  # Use a list to collect usernames
-
-# Loop through each game number in the merged data
-for (i in seq_along(merged_data_complete$game_number)) {
-  count <- count + 1
-  
-  # Extract the game number for current iteration
-  gamenumber <- merged_data_complete$game_number[i]
-  
-  # Check if the count is odd or even to alternate between black and white
-  if (count %% 2 == 1) {
-    # For odd counts, assign black player's username
-    usernames[[count]] <- combined_df$games$black$username[gamenumber]
-  } else {
-    # For even counts, assign white player's username
-    usernames[[count]] <- combined_df$games$white$username[gamenumber]
-  }
+# Define a function to clean timestamps
+clean_timestamp <- function(timestamps) {
+  gsub(".*\\[%clk\\s+([^\\}]+)\\].*", "\\1", timestamps)
 }
 
-# Convert the list of usernames to a data frame
-username_df <- data.frame(username = unlist(usernames), stringsAsFactors = FALSE)
+# Loop through each game and combine moves and timestamps into a data frame
+for (i in seq_along(all_moves)) {
+  moves <- all_moves[[i]]
+  timestamps <- all_timestamps[[i]]
+  
+  # Handle length mismatch and clean timestamps
+  min_length <- min(length(moves), length(timestamps))
+  cleaned_timestamps <- clean_timestamp(timestamps[1:min_length])
+  
+  # Create a data frame for the current game with moves and cleaned timestamps
+  game_data <- data.frame(
+    Move = moves[1:min_length],
+    Timestamp = cleaned_timestamps,
+    stringsAsFactors = FALSE
+  )
+  
+  # Add the game data frame to the combined list
+  combined_data[[i]] <- game_data
+}
+
+# Clean moves using vectorized operations
+clean_moves <- function(moves) {
+  moves <- gsub("^\\.\\.\\s+", "", moves)  # Remove ..  from black moves
+  moves <- gsub("\\{\\[%clk[^}]*\\]\\}", "", moves)  # Remove clock info
+  moves <- gsub("^\\d+\\.\\s*|\\d+\\.\\.\\.\\s*", "", moves)  # Remove move numbers
+  trimws(moves)  # Remove leading and trailing whitespace
+}
+
+combined_data <- lapply(combined_data, function(game_data) {
+  game_data$Move <- clean_moves(game_data$Move)
+  game_data
+})
+
+# Reset results_df_scorea at the start
+results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
+
+# Extract moves from the combined data for the first game and analyze
+moves_string <- paste(unlist(combined_data[[NumberOfGames]]$Move), collapse = " ")
+
+# Analyze the combined moves string
+tryCatch({
+  aaresults <- py$analyze_each_move(moves_string, depth = 20, stockfish_path = stockfish_path)
+  
+  # Convert the results to a dataframe and remove duplicates
+  game_results_df <- unique(as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE))
+  names(game_results_df) <- c("Move", "Score")
+  
+  # Append results to the main dataframe
+  results_df_scorea <- rbind(results_df_scorea, game_results_df)
+}, error = function(e) {
+  message(paste("Error analyzing moves:", e$message))
+})
+
+# Extract and merge with zzztest
+zzztest_subset <- zzztest[1:length(results_df_scorea$Move), ]
+merged_data_complete <- cbind(zzztest_subset, results_df_scorea)
+
+# Initialize usernames using a vectorized approach
+usernames <- ifelse(seq_along(merged_data_complete$game_number) %% 2 == 1,
+                   combined_df$games$black$username[merged_data_complete$game_number],
+                   combined_df$games$white$username[merged_data_complete$game_number])
 
 # Combine the username data frame with the merged data
-merged_data_complete2 <- cbind(username_df, merged_data_complete)
-merged_data_complete2[6] <- NULL
+merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors = FALSE), merged_data_complete)
 
+# Remove the 6th column if necessary
+merged_data_complete2 <- merged_data_complete2[, -6]
+merged_data_complete2$Score<-as.numeric(merged_data_complete2$Score)
 
+Count <- 0  # Initialize the counter
 
+# Convert the 'Score' column to a numeric vector (if it's not already)
+merged_data_complete2$Score <- unlist(merged_data_complete2$Score)
+
+# Identify even positions
+even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
+
+# Multiply only the even positions by -1
+merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
+
+#issue with the plotting as it is taking the first game instead of the last one
 ```
 
 
+
+```{r}
+
+
+# Create a bubble plot with player information
+ggplot(merged_data_complete2, aes(x = Move_Number, y = (Score), size = time_per_move, color = username)) +
+  geom_point(alpha = 0.5) +
+  ylim(-10,10)+
+  labs(x = "Move Number", y = "Evaluation Score", size = "Time Spent (s)", color = "Player") +
+  ggtitle("Bubble Plot of Move Number and Evaluation Score with Time Spent and Players") +
+  theme_minimal()
+
+
+#Need to adjust code for the score so that it will only increase when playing good moves and only be negative when playing bad moves. This is necessary for plotting
+#Need to modify the black scores by a -1 so that they are positive, NOTE i do not know if this will work in all cases i think it will
+```
 
 
 

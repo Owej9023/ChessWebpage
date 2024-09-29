@@ -1,6 +1,5 @@
 #Currently In Progress
 #fix whatever made it not work (Constant)
-#Segment Server into functions so that everything that is code related is defined elsewhere
 
 
 
@@ -19,6 +18,9 @@
 #add suggestions on what they need to do to improve AKA. where they are performing worse than other players at their elo level, ex.time management,# of blunders,advantage captilization
 #add function to download their games as a csv,pgn,etc...
 #Blunder %
+#Segment Server into functions so that everything that is code related is defined elsewhere
+#Rewrite parts of code to make it into repeatable functions for readablitiy
+
 
 
 
@@ -113,7 +115,7 @@ ui <- fluidPage(
              )
     ),
     
-    # Second tab - Gameplay
+    # Second tab - TimeUse
     tabPanel("TimeUse",
              sidebarLayout(
                sidebarPanel(
