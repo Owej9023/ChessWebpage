@@ -184,6 +184,7 @@ server <- function(input, output, session) {
     updateSelectInput(session, "MonthSelect", choices = unique(paste(result_df$year, result_df$month, sep = "-")))
     updateSelectInput(session, "YearSelect", choices = unique(paste(result_df$year, sep = "-")))
     
+    combined_df(combined_df)
     
     # Render plots
     output$plotOutput <- renderPlot({
@@ -229,120 +230,9 @@ server <- function(input, output, session) {
   })
 
 
-  observeEvent(input$GetTimeBtn, {
-    combined_df <- combined_df()
-    
-    progress <- shiny::Progress$new()
-    progress$set(message = "Processing games", value = 0)
-    on.exit(progress$close())
-    
-    #Start of Code for the First Graph
-    selected_time_class <- input$timeClass
-    num_games_to_plot <- input$numGames
-    
-    # Combine filtering in one step for efficiency
-    filtered_data <- combined_df %>%
-      filter(games$rules == "chess", games$rated == TRUE)
-    
-    # Limit to the specified number of games
-    filtered_data <- tail(filtered_data, num_games_to_plot)
 
-    # Precompute total moves for progress bar
-    total_moves <- sum(sapply(filtered_data$games$pgn, function(pgn) {
-      length(str_extract_all(pgn, "\\d+:\\d+(?:\\.\\d+)?")[[1]])
-    }))
+  observeEvent(input$GetTimeBtn, {
     
-    timepermove <- vector("list", length(filtered_data$games$time_control))  # Pre-allocate list
-    move_counter <- 0
-    
-    for (game_index in seq_along(filtered_data$games$time_control)) {
-      value <- filtered_data$games$time_control[game_index]
-      split_strings <- strsplit(value, "\\+")[[1]]
-      Length_of_Game_For_Each_Player <- as.numeric(split_strings[1])
-      time_in_hhmm <- sprintf("%02d:%02d", Length_of_Game_For_Each_Player %/% 60, Length_of_Game_For_Each_Player %% 60)
-      
-      set_value <- time_in_hhmm
-      set_value1 <- time_in_hhmm
-      
-      matches <- str_extract_all(filtered_data$games$pgn[game_index], "\\d+:\\d+(?:\\.\\d+)?")[[1]]
-      
-      timepermoveinterior <- numeric(length(matches))
-      
-      for (move in seq_along(matches)) {
-        if (move %% 2 == 0) {
-          m2 <- as.character(matches[move])
-          NewMatches <- as.POSIXct(m2, format = "%M:%S")
-          timeRemaining <- round(subtract_time(set_value, NewMatches), 1)
-          set_value <- m2
-        } else {
-          m1 <- if (move == 1) set_value1 else as.character(matches[move])
-          NewMatches1 <- as.POSIXct(m1, format = "%M:%S")
-          timeRemaining <- round(subtract_time(set_value1, NewMatches1), 1)
-          set_value1 <- m1
-        }
-        
-        timepermoveinterior[move] <- timeRemaining
-        move_counter <- move_counter + 1
-        
-        # Update progress less frequently to save time
-        if (move_counter %% 10 == 0) {
-          progress$set(value = move_counter / total_moves)
-        }
-      }
-      
-      timepermove[[game_index]] <- timepermoveinterior
-    }
-    
-    # Create zzztest data using vectorized functions
-    zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
-      inner_list <- timepermove[[list_num]]
-      if (length(inner_list) > 0) {
-        data.frame(
-          time_per_move = unlist(inner_list),
-          move_number = seq_along(inner_list),
-          game_number = list_num,
-          time_class = rep(filtered_data$games$time_class[list_num], length(inner_list))
-        )
-      } else {
-        NULL
-      }
-    }))
-    #End of code for the first graph
-    
-    #Start of code for the second graph
-    
-    
-    combined_df <- combined_df()
-    
-    # Progress bar initialization
-    progress <- shiny::Progress$new()
-    progress$set(message = "Processing games", value = 0)
-    on.exit(progress$close())
-    
-    selected_time_class <- input$timeClass
-    num_games_to_plot <- input$numGames
-    
-    # Filter data in one step
-    filtered_data <- combined_df %>%
-      filter(games$rules == "chess", games$rated == TRUE)
-    
-    # Limit number of games based on num_games_to_plot
-    filtered_data <- tail(filtered_data, num_games_to_plot)
-    
-    # Prepare pgn list and initialize lists for moves and timestamps
-    pgn_list <- strsplit(filtered_data$games$pgn, "\n\n")
-    all_moves <- vector("list", length(pgn_list))
-    all_timestamps <- vector("list", length(pgn_list))
-    
-    for (i in seq_along(pgn_list)) {
-      game_pgn <- pgn_list[[i]]
-      temp_aa <- extract_moves_and_timestamps(game_pgn)
-      temp_aa <- separate_moves_and_timestamps(temp_aa)
-      all_moves[[i]] <- temp_aa$moves
-      all_timestamps[[i]] <- temp_aa$timestamps
-    }
-    
-    # Python Stockfish analysis code
     py_run_string("
 import chess
 import chess.engine
@@ -375,6 +265,96 @@ def analyze_each_move(moves_str, depth=20, stockfish_path='/path/to/stockfish'):
         return move_scores
     ")
     
+    
+    combined_df <- combined_df()  # Load combined_df once
+    progress <- shiny::Progress$new()
+    progress$set(message = "Processing games", value = 0)
+    on.exit(progress$close())  # Ensure progress is closed after completion
+    
+    selected_time_class <- input$timeClass
+    num_games_to_plot <- input$numGames
+    
+    # Filter and limit the data
+    filtered_data <- combined_df %>%
+      filter(rules == "chess", rated == TRUE) %>%
+      tail(num_games_to_plot)
+    
+    # Precompute total moves for progress bar
+    total_moves <- sum(sapply(filtered_data$pgn, function(pgn) {
+      length(str_extract_all(pgn, "\\d+:\\d+(?:\\.\\d+)?")[[1]])
+    }))
+    
+    timepermove <- vector("list", length(filtered_data$time_control))  # Pre-allocate list
+    move_counter <- 0
+    
+    for (game_index in seq_along(filtered_data$time_control)) {
+      value <- filtered_data$time_control[game_index]
+      split_strings <- strsplit(value, "\\+")[[1]]
+      Length_of_Game_For_Each_Player <- as.numeric(split_strings[1])
+      time_in_hhmm <- sprintf("%02d:%02d", Length_of_Game_For_Each_Player %/% 60, Length_of_Game_For_Each_Player %% 60)
+      
+      set_value <- time_in_hhmm
+      set_value1 <- time_in_hhmm
+      
+      matches <- str_extract_all(filtered_data$pgn[game_index], "\\d+:\\d+(?:\\.\\d+)?")[[1]]
+      
+      timepermoveinterior <- numeric(length(matches))
+      
+      for (move in seq_along(matches)) {
+        if (move %% 2 == 0) {
+          m2 <- as.character(matches[move])
+          NewMatches <- as.POSIXct(m2, format = "%M:%S")
+          timeRemaining <- round(subtract_time(set_value, NewMatches), 1)
+          set_value <- m2
+        } else {
+          m1 <- if (move == 1) set_value1 else as.character(matches[move])
+          NewMatches1 <- as.POSIXct(m1, format = "%M:%S")
+          timeRemaining <- round(subtract_time(set_value1, NewMatches1), 1)
+          set_value1 <- m1
+        }
+        
+        timepermoveinterior[move] <- timeRemaining
+        move_counter <- move_counter + 1
+        
+        # Update progress
+        if (move_counter %% 10 == 0) {
+          progress$set(value = move_counter / total_moves)
+        }
+      }
+      
+      timepermove[[game_index]] <- timepermoveinterior
+    }
+    
+    # Create zzztest data using vectorized functions
+    zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
+      inner_list <- timepermove[[list_num]]
+      if (length(inner_list) > 0) {
+        data.frame(
+          time_per_move = unlist(inner_list),
+          move_number = seq_along(inner_list),
+          game_number = list_num,
+          time_class = rep(filtered_data$time_class[list_num], length(inner_list))
+        )
+      } else {
+        NULL
+      }
+    }))
+    
+    ### Stockfish Analysis Section (Python Integration) ###
+    
+    # Prepare pgn list and initialize lists for moves and timestamps
+    pgn_list <- strsplit(filtered_data$pgn, "\n\n")
+    all_moves <- vector("list", length(pgn_list))
+    all_timestamps <- vector("list", length(pgn_list))
+    
+    for (i in seq_along(pgn_list)) {
+      game_pgn <- pgn_list[[i]]
+      temp_aa <- extract_moves_and_timestamps(game_pgn)
+      temp_aa <- separate_moves_and_timestamps(temp_aa)
+      all_moves[[i]] <- temp_aa$moves
+      all_timestamps[[i]] <- temp_aa$timestamps
+    }
+    
     # Combine moves and timestamps into data frames
     combined_data <- vector("list", length(all_moves))
     for (i in seq_along(all_moves)) {
@@ -391,41 +371,39 @@ def analyze_each_move(moves_str, depth=20, stockfish_path='/path/to/stockfish'):
       combined_data[[i]] <- game_data
     }
     
-    # Function to clean moves using vectorized operations
-    clean_moves <- function(moves) {
-      moves <- gsub("^\\.\\.\\s+", "", moves)  # Remove .. from black moves
-      moves <- gsub("\\{\\[%clk[^}]*\\]\\}", "", moves)  # Remove clock info
-      moves <- gsub("^\\d+\\.\\s*|\\d+\\.\\.\\.\\s*", "", moves)  # Remove move numbers
-      trimws(moves)  # Remove leading/trailing whitespace
-    }
-    
     # Clean the moves
     combined_data <- lapply(combined_data, function(game_data) {
       game_data$Move <- clean_moves(game_data$Move)
       game_data
     })
     
+    stockfish_path <- "/Program Files (x86)/Tarrasch/Engines/stockfish_11_x64"
+    
     # Analyze moves using Stockfish and combine results
     results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
     moves_string <- paste(unlist(combined_data[[1]]$Move), collapse = " ")
     
-    tryCatch({
-      aaresults <- py$analyze_each_move(moves_string, depth = 20, stockfish_path = stockfish_path)
-      game_results_df <- unique(as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE))
-      names(game_results_df) <- c("Move", "Score")
-      results_df_scorea <- rbind(results_df_scorea, game_results_df)
-    }, error = function(e) {
-      message(paste("Error analyzing moves:", e$message))
-    })
+    aaresults <- py$analyze_each_move(moves_string, depth = 20, stockfish_path = stockfish_path)
     
-    # Extract relevant subset of zzztest and merge with analysis results
-    zzztest_subset <- zzztest[1:length(results_df_scorea$Move), ]
+    # Convert the results to a dataframe and remove duplicates
+    game_results_df <- unique(as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE))
+    names(game_results_df) <- c("Move", "Score")
+    
+    # Append results to the main dataframe
+    results_df_scorea <- rbind(results_df_scorea, game_results_df)
+    
+    ### End of Stockfish Analysis ###
+    
+    # Ensure zzztest_subset matches results_df_scorea length
+    zzztest_subset <- zzztest[1:min(nrow(zzztest), nrow(results_df_scorea)), ]
+    
+    # Merge data
     merged_data_complete <- cbind(zzztest_subset, results_df_scorea)
     
     # Generate usernames based on game and move numbers
     usernames <- ifelse(seq_along(merged_data_complete$game_number) %% 2 == 1,
-                        combined_df$games$black$username[merged_data_complete$game_number],
-                        combined_df$games$white$username[merged_data_complete$game_number])
+                        combined_df$black$username[merged_data_complete$game_number],
+                        combined_df$white$username[merged_data_complete$game_number])
     
     # Merge usernames with the data
     merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors = FALSE), merged_data_complete)
@@ -438,10 +416,7 @@ def analyze_each_move(moves_str, depth=20, stockfish_path='/path/to/stockfish'):
     even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
     merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
     
-    
-    # End of code for second plot
-    
-    
+    ### End of data processing for the second graph ###
     
     output$TimePlotOutput <- renderPlot({
       ggplot(data = zzztest, aes(x = move_number, y = time_per_move, color = time_class)) +
@@ -460,7 +435,6 @@ def analyze_each_move(moves_str, depth=20, stockfish_path='/path/to/stockfish'):
         theme_minimal()
     })
   })
-  
   
 
   

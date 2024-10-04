@@ -78,7 +78,7 @@ ui <- fluidPage(
              sidebarLayout(
                sidebarPanel(
                  textInput("username", "Chess.com Username:"),
-                 numericInput("numberofgames", "Number of Games:", value = 500000, min = 1),
+                 numericInput("numberofgames", "Number of Games:", value = 500, min = 1),
                  pickerInput("ChessGameType", "Select Game Types:", choices = c("Rapid", "Blitz", "Bullet"), multiple = TRUE),
                  actionButton("getDataBtn", "Get Data")
                ),
