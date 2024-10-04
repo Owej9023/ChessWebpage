@@ -28,7 +28,7 @@ server <- function(input, output, session) {
     
     # Fetch and parse archive URLs
     archives <- tryCatch({
-      jsonlite::fromJSON(content(GET(api_url), "text"))
+      fromJSON(content(GET(api_url), "text"))
     }, error = function(e) {
       showNotification("Error fetching data. Please check the username or try again later.", type = "error")
       return(NULL)
@@ -48,7 +48,7 @@ server <- function(input, output, session) {
     games_collected <- 0
     
     for (i in rev(seq_along(archives$archives))) {
-      archive_games <- jsonlite::fromJSON(content(GET(archives$archives[i]), "text", flatten = TRUE))
+      archive_games <- fromJSON(content(GET(archives$archives[i]), "text", flatten = TRUE))
       
       # Filter games based on conditions
       filtered_games <- archive_games$games %>%
@@ -94,10 +94,9 @@ server <- function(input, output, session) {
     result_df$elo_change <- NA
     result_df$total_elo_change <- NA
     
-    # Initialize variables to track cumulative Elo change, last Elos by game type, and last game years by game type
+    # Initialize variables to track cumulative Elo change
     last_elos_by_type <- list()
     cumulative_elo_change_by_year_type <- list()
-    last_year_by_type <- list()
     
     # Iterate through each game to calculate elo_change and total_elo_change
     for (i in 1:nrow(result_df)) {
@@ -111,7 +110,6 @@ server <- function(input, output, session) {
       if (is.null(last_elos_by_type[[game_type]])) last_elos_by_type[[game_type]] <- NA
       if (is.null(cumulative_elo_change_by_year_type[[game_year]])) cumulative_elo_change_by_year_type[[game_year]] <- list()
       if (is.null(cumulative_elo_change_by_year_type[[game_year]][[game_type]])) cumulative_elo_change_by_year_type[[game_year]][[game_type]] <- 0
-      if (is.null(last_year_by_type[[game_type]])) last_year_by_type[[game_type]] <- game_year
       
       if (white_player == chess_username) {
         current_elo <- white_elo
@@ -133,7 +131,6 @@ server <- function(input, output, session) {
       cumulative_elo_change_by_year_type[[game_year]][[game_type]] <- cumulative_elo_change_by_year_type[[game_year]][[game_type]] + result_df[i, "elo_change"]
       result_df[i, "total_elo_change"] <- cumulative_elo_change_by_year_type[[game_year]][[game_type]]
       last_elos_by_type[[game_type]] <- current_elo
-      last_year_by_type[[game_type]] <- game_year
     }
     
     # Group and summarize data
@@ -152,82 +149,164 @@ server <- function(input, output, session) {
     result_df$week <- week(result_df$Date)
     result_df$month <- month(result_df$Date)
     
-    summary_week <- result_df %>%
-      group_by(year, week, ChessGameType) %>%
-      summarize(
-        mean_week_elo = mean(total_elo_change, na.rm = TRUE),
-        sd_week_elo = sd(total_elo_change, na.rm = TRUE),
-        count = n(),
-        sem_week_elo = sd(total_elo_change, na.rm = TRUE) / sqrt(n())
-      )
+    # Create summary data
+    summary_week <- reactive({
+      result_df %>%
+        group_by(year, week, ChessGameType) %>%
+        summarize(
+          mean_week_elo = mean(total_elo_change, na.rm = TRUE),
+          sd_week_elo = sd(total_elo_change, na.rm = TRUE),
+          count = n(),
+          sem_week_elo = sd(total_elo_change, na.rm = TRUE) / sqrt(n())
+        )
+    })
     
-    summary_month <- result_df %>%
-      group_by(year, month, ChessGameType) %>%
-      summarize(
-        mean_month_elo = mean(total_elo_change, na.rm = TRUE),
-        sd_month_elo = sd(total_elo_change, na.rm = TRUE),
-        count = n(),
-        sem_month_elo = sd(total_elo_change, na.rm = TRUE) / sqrt(n())
-      )
+    summary_month <- reactive({
+      result_df %>%
+        group_by(year, month, ChessGameType) %>%
+        summarize(
+          mean_month_elo = mean(total_elo_change, na.rm = TRUE),
+          sd_month_elo = sd(total_elo_change, na.rm = TRUE),
+          count = n(),
+          sem_month_elo = sd(total_elo_change, na.rm = TRUE) / sqrt(n())
+        )
+    })
     
-    summary_year <- result_df %>%
-      group_by(year, ChessGameType) %>%
-      summarize(
-        mean_year_elo = mean(total_elo_change, na.rm = TRUE),
-        sd_year_elo = sd(total_elo_change, na.rm = TRUE),
-        count = n(),
-        sem_year_elo = sd(total_elo_change, na.rm = TRUE) / sqrt(n())
-      )
+    summary_year <- reactive({
+      result_df %>%
+        group_by(year, ChessGameType) %>%
+        summarize(
+          mean_year_elo = mean(total_elo_change, na.rm = TRUE),
+          sd_year_elo = sd(total_elo_change, na.rm = TRUE),
+          count = n(),
+          sem_year_elo = sd(total_elo_change, na.rm = TRUE) / sqrt(n())
+        )
+    })
     
-    # Update the inputs for week, month, and year selection
-    updateSelectInput(session, "WeekSelect", choices = unique(paste(result_df$year, result_df$week, sep = "-")))
-    updateSelectInput(session, "MonthSelect", choices = unique(paste(result_df$year, result_df$month, sep = "-")))
-    updateSelectInput(session, "YearSelect", choices = unique(paste(result_df$year, sep = "-")))
-    
-    combined_df(combined_df)
+    # Update UI selections based on available data
+    updateSelectInput(session, "MonthSelect", choices = unique(result_df$month), selected = NULL)
+    updateSelectInput(session, "YearSelect", choices = unique(result_df$year), selected = NULL)
+    updateSelectInput(session, "WeekSelect", choices = unique(result_df$week), selected = NULL)
     
     # Render plots
+    
+    # Ensure that WhiteElo and BlackElo are numeric
+    result_df <- result_df %>%
+      mutate(
+        WhiteElo = as.numeric(unlist(WhiteElo)),
+        BlackElo = as.numeric(unlist(BlackElo))
+      )
+    
+    # Replace 'username' with the actual user input
+    username <- input$username 
+    
+    # Create the Elo value based on whether the user is White or Black
+    result_df <- result_df %>%
+      mutate(current_elo = case_when(
+        White == username ~ WhiteElo,   # If the user is playing White, use WhiteElo
+        Black == username ~ BlackElo,   # If the user is playing Black, use BlackElo
+        TRUE ~ NA_real_                 # NA for games not involving the user
+      ))
+    
     output$plotOutput <- renderPlot({
-      result_df$username_elo <- ifelse(input$username == result_df$White, result_df$WhiteElo, 
-                                       ifelse(input$username == result_df$Black, result_df$BlackElo, NA))
+      # Get the maximum game number
+      max_game_number <- max(result_df$game_number, na.rm = TRUE)
       
-      ggplot(result_df, aes(x = game_number, y = as.integer(username_elo), color = ChessGameType)) +
+      # Determine the breaks to achieve roughly 4 increments
+      interval <- ceiling(max_game_number / 4)  # Divide max by 4 and round up
+      
+      # Create breaks ensuring at least 4 breaks are shown
+      breaks <- seq(0, max_game_number, by = interval)
+      
+      # Make sure to include the max_game_number if it's not already in the breaks
+      if (tail(breaks, 1) < max_game_number) {
+        breaks <- c(breaks, max_game_number)
+      }
+      
+      # Now create the ggplot using date instead of game number
+      ggplot(result_df, aes(x = Date, y = current_elo, color = ChessGameType)) +
         geom_point() +
-        geom_smooth(size = 2) +
-        labs(title = "Elo over Game Number", x = "Game Number", y = "Elo") +
+        geom_smooth() +
+        labs(title = "Elo Rating Over Date", x = "Date", y = "Current Elo Rating") +
         theme_minimal()
+      
+      
     })
     
+    # Plot the month-over-month Elo change
+    # Select the last value of total_elo_change for each ChessGameType and month
+    result_df_last <- result_df %>%
+      group_by(ChessGameType, month) %>%
+      summarise(last_elo_change = tail(total_elo_change, 1)) %>%
+      ungroup()
+    
+    # Plot the last Elo change value for each month and ChessGameType
     output$plotOutput2 <- renderPlot({
-      ggplot(result_df, aes(x = Date, y = as.integer(total_elo_change), color = ChessGameType)) +
-        geom_point() +
-        geom_line(size = 2) +
-        labs(title = "Total Elo Change over Date", x = "Date", y = "Total Elo Change") +
-        theme_minimal()
+      ggplot(result_df_last, aes(x = as.factor(month), y = last_elo_change, fill = ChessGameType)) +
+        geom_col(position = position_dodge()) +
+        labs(title = "Elo Change for Each Month", x = "Month", y = "Last Elo Change")
     })
     
+    # Create the plot with date on the x-axis
     output$plotOutput3 <- renderPlot({
-      ggplot(summary_week, aes(x = week, y = mean_week_elo, group = year, color = ChessGameType)) +
-        geom_line(size = 2) +
-        labs(title = "Weekly Mean Elo Change", x = "Week", y = "Mean Elo Change") +
+      ggplot(result_df, aes(x = Date, y = total_elo_change, color = ChessGameType)) +
+        geom_point() +
+        geom_smooth() +
+        labs(title = "Elo Change Over Date", x = "Date", y = "Total Elo Change") +
         theme_minimal()
     })
     
-    output$plotOutput4 <- renderPlotly({
-      plot_ly(summary_week, x = ~week, y = ~mean_week_elo, type = "scatter", mode = "lines+markers", color = ~ChessGameType) %>%
-        layout(title = "Weekly Elo Change")
-    })
-    
-    output$plotOutput5 <- renderPlotly({
-      plot_ly(summary_month, x = ~month, y = ~mean_month_elo, type = "scatter", mode = "lines+markers", color = ~ChessGameType) %>%
-        layout(title = "Monthly Elo Change")
-    })
     
     output$plotOutput6 <- renderPlotly({
-      plot_ly(summary_year, x = ~year, y = ~mean_year_elo, type = "scatter", mode = "lines+markers", color = ~ChessGameType) %>%
-        layout(title = "Yearly Elo Change")
-    })
+    req(input$YearSelect)
+    filtered_summary_year <- summary_year() %>%
+        filter(year %in% input$YearSelect, !is.na(mean_year_elo))  # Remove NA values
+    
+    plot_ly(filtered_summary_year, 
+            x = ~year, 
+            y = ~mean_year_elo, 
+            type = "scatter", 
+            mode = "lines+markers",  # This will connect the lines through existing points
+            color = ~ChessGameType) %>%
+        layout(title = "Yearly Elo Change", 
+               xaxis = list(title = "Year"), 
+               yaxis = list(title = "Mean Elo"))
+})
+
+output$plotOutput4 <- renderPlotly({
+    req(input$MonthSelect)
+    filtered_summary_month <- summary_month() %>%
+        filter(month %in% input$MonthSelect, !is.na(mean_month_elo))  # Remove NA values
+    
+    plot_ly(filtered_summary_month, 
+            x = ~month, 
+            y = ~mean_month_elo, 
+            type = "scatter", 
+            mode = "lines+markers", 
+            color = ~ChessGameType) %>%
+        layout(title = "Monthly Elo Change", 
+               xaxis = list(title = "Month"), 
+               yaxis = list(title = "Mean Elo"))
+})
+
+output$plotOutput5 <- renderPlotly({
+    req(input$WeekSelect)
+    filtered_summary_week <- summary_week() %>%
+        filter(week %in% input$WeekSelect, !is.na(mean_week_elo))  # Remove NA values
+    
+    plot_ly(filtered_summary_week, 
+            x = ~week, 
+            y = ~mean_week_elo, 
+            type = "scatter", 
+            mode = "lines+markers", 
+            color = ~ChessGameType) %>%
+        layout(title = "Weekly Elo Change", 
+               xaxis = list(title = "Week"), 
+               yaxis = list(title = "Mean Elo"))
+})
+
   })
+  
 
   observeEvent(input$GetTimeBtn, {
     
