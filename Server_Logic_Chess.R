@@ -56,6 +56,48 @@ clean_usernames <- function(user_string) {
   return(sub("\\[.*?\"(.*?)\"\\]", "\\1", user_string))
 }
 
+# Define a function to clean timestamps
+clean_timestamp <- function(timestamps) {
+  gsub(".*\\[%clk\\s+([^\\}]+)\\].*", "\\1", timestamps)
+}
+
+# Clean moves using vectorized operations
+clean_moves <- function(moves) {
+  moves <- gsub("^\\.\\.\\s+", "", moves)  # Remove ..  from black moves
+  moves <- gsub("\\{\\[%clk[^}]*\\]\\}", "", moves)  # Remove clock info
+  moves <- gsub("^\\d+\\.\\s*|\\d+\\.\\.\\.\\s*", "", moves)  # Remove move numbers
+  trimws(moves)  # Remove leading and trailing whitespace
+}
+
+extract_moves_and_timestamps <- function(pgn) {
+  lines <- unlist(strsplit(pgn, "\n"))
+  moves_line <- lines[length(lines)]
+  matches <- regmatches(moves_line, gregexpr("\\d+\\.\\s+[^{}]+\\{\\[%clk\\s+[^\\}]+\\]|\\d+\\.\\.\\.\\s+[^{}]+\\{\\[%clk\\s+[^\\}]+\\]", moves_line))
+  moves <- unlist(matches)
+  moves_cleaned <- gsub("\\{\\[%clk\\s+([^\\}]+)\\]\\}", " \\1", moves)
+  return(moves_cleaned)
+}
+
+separate_moves_and_timestamps <- function(data) {
+  moves <- c()
+  timestamps <- list()
+  for (entry in data) {
+    if (grepl("^\\d+\\.\\s+", entry)) {
+      move <- sub("\\{\\[%clk\\s+([^\\}]+)\\]", "", sub("\\d+\\.\\s+([^{}]+)", "\\1", entry))
+    } else if (grepl("^\\d+\\.\\.\\.\\s+", entry)) {
+      move <- sub("\\{\\[%clk\\s+([^\\}]+)\\]", "", sub("\\d+\\.\\.\\.\\s+([^{}]+)", "\\1", entry))
+    } else {
+      next
+    }
+    timestamp <- sub(".*\\{\\[%clk\\s+([^\\}]+)\\]", "\\1", entry)
+    moves <- c(moves, move)
+    timestamps <- c(timestamps, timestamp)
+  }
+  move_string <- paste(moves, collapse = " ")
+  timestamp_dict <- as.list(timestamps)
+  return(list(moves = moves, timestamps = timestamp_dict))
+}
+
 # Create a function that calculates the amount of time spent per move
 subtract_time <- function(set_value, variable) {
   set_time <- as.POSIXct(set_value, format = "%M:%OS")
@@ -68,4 +110,3 @@ subtract_time <- function(set_value, variable) {
   # Return the result time
   return(result_time)
 }
-

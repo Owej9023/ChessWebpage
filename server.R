@@ -229,8 +229,6 @@ server <- function(input, output, session) {
     })
   })
 
-
-
   observeEvent(input$GetTimeBtn, {
     
     py_run_string("
@@ -377,7 +375,7 @@ def analyze_each_move(moves_str, depth=20, stockfish_path='/path/to/stockfish'):
       game_data
     })
     
-    stockfish_path <- "/Program Files (x86)/Tarrasch/Engines/stockfish_11_x64"
+    stockfish_path <- "stockfish-windows-x86-64-avx2"
     
     # Analyze moves using Stockfish and combine results
     results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
