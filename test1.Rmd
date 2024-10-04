@@ -871,36 +871,17 @@ for (i in seq_along(all_moves)) {
 
 
 ```{r}
-NumberOfGames <- 3
-# Initialize an empty list to store combined data for each game
-combined_data <- vector("list", length(all_moves)) # Pre-allocate list for efficiency
+# Set the number of games to analyze
+NumberOfGames <- 3  # Adjust this to the number of games you want to analyze
+
+# Initialize an empty dataframe to store results for the specified number of games
+results_df_scorea <- data.frame(Move = character(), Score = numeric(), GameNumber = integer(), stringsAsFactors = FALSE)
 
 # Define a function to clean timestamps
 clean_timestamp <- function(timestamps) {
   gsub(".*\\[%clk\\s+([^\\}]+)\\].*", "\\1", timestamps)
 }
 
-# Loop through each game and combine moves and timestamps into a data frame
-for (i in seq_along(all_moves)) {
-  moves <- all_moves[[i]]
-  timestamps <- all_timestamps[[i]]
-  
-  # Handle length mismatch and clean timestamps
-  min_length <- min(length(moves), length(timestamps))
-  cleaned_timestamps <- clean_timestamp(timestamps[1:min_length])
-  
-  # Create a data frame for the current game with moves and cleaned timestamps
-  game_data <- data.frame(
-    Move = moves[1:min_length],
-    Timestamp = cleaned_timestamps,
-    stringsAsFactors = FALSE
-  )
-  
-  # Add the game data frame to the combined list
-  combined_data[[i]] <- game_data
-}
-
-# Clean moves using vectorized operations
 clean_moves <- function(moves) {
   moves <- gsub("^\\.\\.\\s+", "", moves)  # Remove ..  from black moves
   moves <- gsub("\\{\\[%clk[^}]*\\]\\}", "", moves)  # Remove clock info
@@ -908,36 +889,53 @@ clean_moves <- function(moves) {
   trimws(moves)  # Remove leading and trailing whitespace
 }
 
-combined_data <- lapply(combined_data, function(game_data) {
+# Loop through each game (up to NumberOfGames)
+for (i in seq_len(min(NumberOfGames, length(all_moves)))) {
+  
+  # Extract moves and timestamps for the current game
+  moves <- all_moves[[i]]
+  timestamps <- all_timestamps[[i]]
+  
+  # Handle length mismatch and clean timestamps
+  min_length <- min(length(moves), length(timestamps))
+  cleaned_timestamps <- clean_timestamp(timestamps[1:min_length])
+  
+  # Create a data frame for the current game
+  game_data <- data.frame(
+    Move = moves[1:min_length],
+    Timestamp = cleaned_timestamps,
+    stringsAsFactors = FALSE
+  )
+  
+  # Clean the moves using vectorized operations
   game_data$Move <- clean_moves(game_data$Move)
-  game_data
-})
-
-# Reset results_df_scorea at the start
-results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
-
-# Extract moves from the combined data for the first game and analyze
-moves_string <- paste(unlist(combined_data[[NumberOfGames]]$Move), collapse = " ")
-
-# Analyze the combined moves string
-tryCatch({
-  aaresults <- py$analyze_each_move(moves_string, depth = 20, stockfish_path = stockfish_path)
   
-  # Convert the results to a dataframe and remove duplicates
-  game_results_df <- unique(as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE))
-  names(game_results_df) <- c("Move", "Score")
+  # Analyze the moves for the current game using the Python function
+  moves_string <- paste(unlist(game_data$Move), collapse = " ")
   
-  # Append results to the main dataframe
-  results_df_scorea <- rbind(results_df_scorea, game_results_df)
-}, error = function(e) {
-  message(paste("Error analyzing moves:", e$message))
-})
+  tryCatch({
+    aaresults <- py$analyze_each_move(moves_string, depth = 20, stockfish_path = stockfish_path)
+    
+    # Convert the analysis results to a dataframe and remove duplicates
+    game_results_df <- unique(as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE))
+    names(game_results_df) <- c("Move", "Score")
+    
+    # Append the results to the main dataframe, adding the game number for tracking
+    game_results_df$GameNumber <- i
+    results_df_scorea <- rbind(results_df_scorea, game_results_df)
+    
+  }, error = function(e) {
+    message(paste("Error analyzing moves for game", i, ":", e$message))
+  })
+}
 
-# Extract and merge with zzztest
-zzztest_subset <- zzztest[1:length(results_df_scorea$Move), ]
+# At this point, `results_df_scorea` contains combined results for the specified number of games
+
+# Extract and merge with zzztest for all games
+zzztest_subset <- zzztest[1:nrow(results_df_scorea), ]
 merged_data_complete <- cbind(zzztest_subset, results_df_scorea)
 
-# Initialize usernames using a vectorized approach
+# Initialize usernames based on game number
 usernames <- ifelse(seq_along(merged_data_complete$game_number) %% 2 == 1,
                    combined_df$games$black$username[merged_data_complete$game_number],
                    combined_df$games$white$username[merged_data_complete$game_number])
@@ -947,20 +945,16 @@ merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors
 
 # Remove the 6th column if necessary
 merged_data_complete2 <- merged_data_complete2[, -6]
-merged_data_complete2$Score<-as.numeric(merged_data_complete2$Score)
 
-Count <- 0  # Initialize the counter
+# Convert the 'Score' column to numeric if it's not already
+merged_data_complete2$Score <- as.numeric(merged_data_complete2$Score)
 
-# Convert the 'Score' column to a numeric vector (if it's not already)
-merged_data_complete2$Score <- unlist(merged_data_complete2$Score)
-
-# Identify even positions
+# Identify even positions and multiply them by -1
 even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
-
-# Multiply only the even positions by -1
 merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
 
-#issue with the plotting as it is taking the first game instead of the last one
+# Now `merged_data_complete2` contains the combined data ready for further analysis or plotting
+
 ```
 
 
@@ -980,6 +974,161 @@ ggplot(merged_data_complete2, aes(x = Move_Number, y = (Score), size = time_per_
 #Need to adjust code for the score so that it will only increase when playing good moves and only be negative when playing bad moves. This is necessary for plotting
 #Need to modify the black scores by a -1 so that they are positive, NOTE i do not know if this will work in all cases i think it will
 ```
+#Starting the GA It works somewhat well starting port to server
+```{r}
+
+#make new dataframe for result_df that has the eval and time and move for each game
+result_df <- left_join(result_df, merged_data_complete2, by = c("game_number" = "game_number")) # Adjust as necessary
+
+result_df <- result_df %>%
+  slice(1:nrow(merged_data_complete2))
+
+library(GA)
+username<-"owej9023"
+
+result_df <- result_df %>%
+  mutate(current_elo = case_when(
+    V5 == username ~ V14,   # If the user is playing White, use WhiteElo
+    V6 == username ~ V15,   # If the user is playing Black, use BlackElo
+    TRUE ~ NA_real_                 # NA for games not involving the user
+  ))
+
+result_df <- result_df %>%
+  mutate(opponentElo = case_when(
+    V5 != username ~ V14,   # If the user is playing White, use WhiteElo
+    V6 != username ~ V15,   # If the user is playing Black, use BlackElo
+    TRUE ~ NA_real_                 # NA for games not involving the user
+  ))
+
+result_df <- result_df %>%
+  mutate(game_result_numeric = case_when(
+    V7 == "1-0" ~ 1,
+    V7 == "0-1" ~ 0,
+    V7 == "1/2-1/2" ~ 0.5,
+    TRUE ~ NA_real_  # Handle unexpected cases if needed
+  ))
+
+```
+
+
+```{r}
+
+# Extract features (X) and target (y)
+X <- as.matrix(result_df[, c("opponentElo", "game_result_numeric","time_per_move.y","Move_Number.y","Score.y","GameNumber.y")])  # Use opponent_elo and game_result as features
+y_true <- result_df$current_elo  # Use current_elo as the target variable
+
+# Define the fitness function (e.g., minimize MSE between predicted Elo and actual Elo)
+fitness_function <- function(params, X, y_true) {
+  # Predict Elo using a linear combination of features and weights (params)
+  y_pred <- X %*% params
+  mse <- mean((y_true - y_pred)^2)  # Mean Squared Error
+  return(-mse)  # We return the negative because GA maximizes by default
+}
+
+# Run the genetic algorithm to find the optimal weights
+ga_model <- ga(
+  type = "real-valued",  # We're optimizing real-valued parameters
+  fitness = function(params) fitness_function(params, X, y_true),
+  lower = rep(-1, ncol(X)),  # Lower bounds for weights
+  upper = rep(1, ncol(X)),   # Upper bounds for weights
+  popSize = 500,              # Population size
+  maxiter = 1000,             # Maximum number of generations
+  run = 50,                  # Stop after 50 generations without improvement
+  pmutation = 0.2            # Mutation probability
+)
+
+# Display the best solution
+summary(ga_model)
+best_weights <- ga_model@solution
+best_weights
+
+#now it becomes time to udnerstand the ouput and optimize it
+
+
+```
+
+
+
+
+```{r}
+
+# Assuming 'best_weights' has been obtained from the GA
+
+# Initialize the current state (last known values)
+current_state <- as.numeric(result_df[nrow(result_df), c("opponentElo", "game_result_numeric", "time_per_move.y", "Move_Number.y", "Score.y", "GameNumber.y")])
+
+# Function to predict future Elo
+predict_future_elo <- function(current_state, weights, iterations) {
+  predicted_elos <- numeric(iterations)
+  
+  for (i in 1:iterations) {
+    # Predict Elo for the current state
+    predicted_elo <- sum(current_state * weights)
+    
+    # Store the predicted Elo
+    predicted_elos[i] <- predicted_elo
+    
+    # Update the current state for the next iteration
+    # Here you might adjust current_state based on your rules
+    # This is an example; adjust as needed based on your logic
+    current_state[1] <- current_state[1] + rnorm(1, mean = 0, sd = 202)  # Simulate opponentElo change
+    current_state[4] <- current_state[4] + 1  # Increment Move_Number.y
+    current_state[6] <- current_state[6] + 1  # Increment GameNumber.y
+    # other updates based on your model logic...
+  }
+  
+  return(predicted_elos)
+}
+
+# Predict Elo 10 iterations into the future
+future_elos <- predict_future_elo(current_state, best_weights, 20)
+
+# Display the future Elo predictions
+print(future_elos)
+
+
+
+
+
+```
+
+```{r}
+
+
+
+mean_elo_difference <- function(data) {
+  # Ensure that the required columns are present
+  # Calculate the Elo difference for each game
+  elo_differences <- abs(data$current_elo - data$opponentElo)
+  
+  # Calculate the mean Elo difference
+  mean_difference <- mean(elo_differences, na.rm = TRUE)  # na.rm = TRUE to ignore NA values
+  
+  return(mean_difference)
+}
+
+# Example usage
+mean_difference <- mean_elo_difference(result_df)
+print(mean_difference)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
