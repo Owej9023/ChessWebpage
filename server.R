@@ -223,7 +223,7 @@ server <- function(input, output, session) {
         breaks <- c(breaks, max_game_number)
       }
       
-      # Now create the ggplot using date instead of game number
+      # Now create the g0gplot using date instead of game number
       ggplot(result_df, aes(x = Date, y = current_elo, color = ChessGameType)) +
         geom_point() +
         geom_smooth() +
