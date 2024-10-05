@@ -14,11 +14,47 @@ library(reticulate)
 library(stringr)
 library(purrr)
 
+py_run_string("
+import chess
+import chess.engine
+engine_depth<-1
+move_scores = []
+
+def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/stockfish'):
+    with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
+        board = chess.Board()
+        moves = moves_str.split()
+        for move in moves:
+            board.push_san(move)
+            info = engine.analyse(board, chess.engine.Limit(depth=depth))
+            
+            # Handle mate scores
+            mate_in = info['score'].relative.mate()
+            if mate_in is not None:
+                if mate_in == 0:
+                    score = 10000  # Checkmate
+                else:
+                    score = 10000 * (mate_in / abs(mate_in))
+            else:
+                score = info['score'].relative.score() / 100  # Normalize centipawn score
+            
+            # Invert score for Black
+            if board.turn == chess.BLACK:
+                score = -score
+            
+            move_scores.append((move, score))
+        return move_scores
+    ")
+
 source("Server_Logic_Chess.R")
+
 
 server <- function(input, output, session) {
 
   combined_df <- reactiveVal(NULL)
+  result_df<-reactiveVal(NULL)
+  merged_data_complete2<-reactiveVal(NULL)
+  
   
   observeEvent(input$getDataBtn, {
     chess_username <- input$username
@@ -73,7 +109,7 @@ server <- function(input, output, session) {
     # Combine collected game data into a single dataframe
     combined_df <- bind_rows(archive_data) %>%
       filter(nrow(.) > 0) # Ensure that there is data after filtering
-    
+    combined_df(combined_df)
     # Process each game to extract PGN values and metadata
     result_list <- lapply(seq_len(nrow(combined_df)), function(i) {
       pgn_values <- extract_pgn_values(combined_df$pgn[i])
@@ -149,6 +185,7 @@ server <- function(input, output, session) {
     result_df$week <- week(result_df$Date)
     result_df$month <- month(result_df$Date)
     
+    result_df(result_df)
     # Create summary data
     summary_week <- reactive({
       result_df %>%
@@ -184,9 +221,26 @@ server <- function(input, output, session) {
     })
     
     # Update UI selections based on available data
-    updateSelectInput(session, "MonthSelect", choices = unique(result_df$month), selected = NULL)
-    updateSelectInput(session, "YearSelect", choices = unique(result_df$year), selected = NULL)
-    updateSelectInput(session, "WeekSelect", choices = unique(result_df$week), selected = NULL)
+    updateSelectInput(session, "MonthSelect", choices = unique(result_df$month), selected = unique(result_df$month))
+    updateSelectInput(session, "YearSelect", choices = unique(result_df$year), selected = unique(result_df$year))
+    updateSelectInput(session, "WeekSelect", choices = unique(result_df$week), selected = unique(result_df$week))
+    
+    output$yearSelectUI <- renderUI({
+      req(result_df())
+      selectInput("YearSelect", "Select Year(s):", choices = unique(result_df()$year), selected = NULL, multiple = TRUE)
+    })
+    
+    output$monthSelectUI <- renderUI({
+      req(result_df())
+      selectInput("MonthSelect", "Select Month(s):", choices = unique(result_df()$month), selected = unique(result_df()$month), multiple = TRUE)
+    })
+    
+    output$weekSelectUI <- renderUI({
+      req(result_df())
+      selectInput("WeekSelect", "Select Week(s):", choices = unique(result_df()$week), selected = unique(result_df()$week), multiple = TRUE)
+    })
+    
+    
     
     # Render plots
     
@@ -258,6 +312,7 @@ server <- function(input, output, session) {
     
     
     output$plotOutput6 <- renderPlotly({
+    
     req(input$YearSelect)
     filtered_summary_year <- summary_year() %>%
         filter(year %in% input$YearSelect, !is.na(mean_year_elo))  # Remove NA values
@@ -265,12 +320,12 @@ server <- function(input, output, session) {
     plot_ly(filtered_summary_year, 
             x = ~year, 
             y = ~mean_year_elo, 
-            type = "scatter", 
-            mode = "lines+markers",  # This will connect the lines through existing points
+            type = "bar", 
             color = ~ChessGameType) %>%
         layout(title = "Yearly Elo Change", 
                xaxis = list(title = "Year"), 
-               yaxis = list(title = "Mean Elo"))
+               yaxis = list(title = "Mean Elo"),
+               barmode = "group")
 })
 
 output$plotOutput4 <- renderPlotly({
@@ -281,12 +336,12 @@ output$plotOutput4 <- renderPlotly({
     plot_ly(filtered_summary_month, 
             x = ~month, 
             y = ~mean_month_elo, 
-            type = "scatter", 
-            mode = "lines+markers", 
+            type = "bar", 
             color = ~ChessGameType) %>%
         layout(title = "Monthly Elo Change", 
                xaxis = list(title = "Month"), 
-               yaxis = list(title = "Mean Elo"))
+               yaxis = list(title = "Mean Elo"),
+               barmode = "group")
 })
 
 output$plotOutput5 <- renderPlotly({
@@ -297,51 +352,21 @@ output$plotOutput5 <- renderPlotly({
     plot_ly(filtered_summary_week, 
             x = ~week, 
             y = ~mean_week_elo, 
-            type = "scatter", 
-            mode = "lines+markers", 
+            type = "bar",                # Change type to "bar"
             color = ~ChessGameType) %>%
-        layout(title = "Weekly Elo Change", 
-               xaxis = list(title = "Week"), 
-               yaxis = list(title = "Mean Elo"))
+      layout(title = "Weekly Elo Change", 
+             xaxis = list(title = "Week"), 
+             yaxis = list(title = "Mean Elo"),
+             barmode = "group")
+    
 })
 
   })
   
 
   observeEvent(input$GetTimeBtn, {
-    
-    py_run_string("
-import chess
-import chess.engine
-
-move_scores = []
-
-def analyze_each_move(moves_str, depth=20, stockfish_path='/path/to/stockfish'):
-    with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
-        board = chess.Board()
-        moves = moves_str.split()
-        for move in moves:
-            board.push_san(move)
-            info = engine.analyse(board, chess.engine.Limit(depth=depth))
-            
-            # Handle mate scores
-            mate_in = info['score'].relative.mate()
-            if mate_in is not None:
-                if mate_in == 0:
-                    score = 10000  # Checkmate
-                else:
-                    score = 10000 * (mate_in / abs(mate_in))
-            else:
-                score = info['score'].relative.score() / 100  # Normalize centipawn score
-            
-            # Invert score for Black
-            if board.turn == chess.BLACK:
-                score = -score
-            
-            move_scores.append((move, score))
-        return move_scores
-    ")
-    
+    engine_depth<-as.integer(input$EngineDepth)
+    py$engine_depth <- engine_depth
     
     combined_df <- combined_df()  # Load combined_df once
     progress <- shiny::Progress$new()
@@ -460,7 +485,7 @@ def analyze_each_move(moves_str, depth=20, stockfish_path='/path/to/stockfish'):
     results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
     moves_string <- paste(unlist(combined_data[[1]]$Move), collapse = " ")
     
-    aaresults <- py$analyze_each_move(moves_string, depth = 20, stockfish_path = stockfish_path)
+    aaresults <- py$analyze_each_move(moves_string, depth = engine_depth, stockfish_path = stockfish_path)
     
     # Convert the results to a dataframe and remove duplicates
     game_results_df <- unique(as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE))
@@ -492,8 +517,10 @@ def analyze_each_move(moves_str, depth=20, stockfish_path='/path/to/stockfish'):
     # Identify even positions and invert scores for Black moves
     even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
     merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
-    
+    merged_data_complete2(merged_data_complete2)
     ### End of data processing for the second graph ###
+    
+    browser()
     
     output$TimePlotOutput <- renderPlot({
       ggplot(data = zzztest, aes(x = move_number, y = time_per_move, color = time_class)) +
@@ -510,6 +537,107 @@ def analyze_each_move(moves_str, depth=20, stockfish_path='/path/to/stockfish'):
         labs(x = "Move Number", y = "Evaluation Score", size = "Time Spent (s)", color = "Player") +
         ggtitle("Bubble Plot of Move Number and Evaluation Score with Time Spent and Players") +
         theme_minimal()
+    })
+  })
+  
+  
+  observeEvent(input$GetForecastBtn, {
+    
+    result_df<-result_df()
+    merged_data_complete2<-merged_data_complete2()
+    # First, merge result_df and merged_data_complete2
+    result_df <- left_join(result_df, merged_data_complete2, by = "game_number")
+    
+    # Then slice the result_df to match the number of rows in merged_data_complete2
+    result_df <- result_df %>%
+      slice(1:nrow(merged_data_complete2))
+    
+    username <- input$username
+    
+    # Apply all mutations in one pipeline
+    result_df2 <- result_df %>%
+      mutate(
+        current_elo = case_when(
+          White == username ~ as.numeric(WhiteElo),    # If the user is playing White, use WhiteElo
+          Black == username ~ as.numeric(BlackElo),    # If the user is playing Black, use BlackElo
+          TRUE ~ NA_real_                               # NA for games not involving the user
+        ),
+        # Check for NA values in current_elo and replace them with the corresponding Elo
+        current_elo = ifelse(is.na(current_elo),
+                             ifelse(White == username, as.numeric(WhiteElo), as.numeric(BlackElo)),
+                             current_elo),
+        
+        opponentElo = case_when(
+          White != username ~ as.numeric(WhiteElo),    # If the user is playing Black, opponent is White
+          Black != username ~ as.numeric(BlackElo),    # If the user is playing White, opponent is Black
+          TRUE ~ NA_real_                               # NA for games not involving the user
+        ),
+        game_result_numeric = case_when(
+          Result == "1-0" ~ 1,             # User wins
+          Result == "0-1" ~ 0,             # User loses
+          Result == "1/2-1/2" ~ 0.5,       # Draw
+          TRUE ~ NA_real_                  # Handle unexpected cases
+        )
+      )
+    
+    
+    # Extract features (X) and target (y)
+    X <- as.matrix(result_df2[, c("opponentElo", "game_result_numeric","time_per_move","move_number","Score","game_number")])  # Use opponent_elo and game_result as features
+    y_true <- result_df2$current_elo  # Use current_elo as the target variable
+    
+    # Define the fitness function (e.g., minimize MSE between predicted Elo and actual Elo)
+    fitness_function <- function(params, X, y_true) {
+      # Predict Elo using a linear combination of features and weights (params)
+      y_pred <- X %*% params
+      mse <- mean((y_true - y_pred)^2)  # Mean Squared Error
+      return(-mse)  # We return the negative because GA maximizes by default
+    }
+    
+    # Run the genetic algorithm to find the optimal weights
+    ga_model <- ga(
+      type = "real-valued",  # We're optimizing real-valued parameters
+      fitness = function(params) fitness_function(params, X, y_true),
+      lower = rep(-1, ncol(X)),  # Lower bounds for weights
+      upper = rep(1, ncol(X)),   # Upper bounds for weights
+      popSize = 500,              # Population size
+      maxiter = 1000,             # Maximum number of generations
+      run = 50,                  # Stop after 50 generations without improvement
+      pmutation = 0.2            # Mutation probability
+    )
+    
+    # Initialize the current state (last known values)
+    current_state <- as.numeric(result_df2[nrow(result_df2), c("opponentElo", "game_result_numeric","time_per_move","move_number","Score","game_number")])
+    
+    # Function to predict future Elo
+    predict_future_elo <- function(current_state, weights, iterations) {
+      predicted_elos <- numeric(iterations)
+      
+      for (i in 1:iterations) {
+        # Predict Elo for the current state
+        predicted_elo <- sum(current_state * weights)
+        
+        # Store the predicted Elo
+        predicted_elos[i] <- predicted_elo
+        
+        # Update the current state for the next iteration
+        # Here you might adjust current_state based on your rules
+        # This is an example; adjust as needed based on your logic
+        current_state[1] <- current_state[1] + rnorm(1, mean = 0, sd = 10)  # Simulate opponentElo change
+        current_state[4] <- current_state[4] + 1  # Increment Move_Number.y
+        current_state[6] <- current_state[6] + 1  # Increment GameNumber.y
+        # other updates based on your model logic...
+      }
+      
+      return(predicted_elos)
+    }
+    best_weights <- ga_model@solution
+    # Predict Elo 10 iterations into the future
+    future_elos <- predict_future_elo(current_state, best_weights, 10)
+    
+    
+    
+    output$forecastText <- renderPrint({
+      print(future_elos)  # Print the predicted Elo ratings
     })
   })
   

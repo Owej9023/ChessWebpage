@@ -23,24 +23,22 @@ shinyApp(ui, server)
 
 #Currently In Progress
 #fix whatever made it not work (Constant)
-#fix the UI on first page
-#fix the loading bars for the time graph
-
+#Fix the issue with result_df2 not getting more than 1 game
+#fix issue with merged_data getting the number of moves from input and change it to number of games
+#Adjust the Code so that all necessary data is stored in reactive values
+#Make sure that the code does not collect or transform data more than once
 
 
 #To Do Not easily
-#Elo Forecasting Algorithim ()Maybe use a genetic algorithim trained on randomly selected accounts from all elo ranges
+#Create a MQI<- #write function to get the number of blunders, mistakes, innaccuracies, and missed checkmates and categorize them.
 #Improve speed of MQI
 #Improve accuracy of MQI
-#write function to get the number of blunders, mistakes, innaccuracies, and missed checkmates and categorize them.
-#performace by time of day
 # add advantage captilization graph - how often you win when then engine favors you heavily 
 #judge opening (15 moves)
 #judge endgame(last 15 moves)
 #judge middlegame moves after the first 15 but not moves after move 40? maybe move 60? will have to see how this can be generalized to account for extremely short and long games
 #add resoursefullness- aka how often are you able to win/draw when the engine does not favor you heavily. aka +-6
 #add suggestions on what they need to do to improve AKA. where they are performing worse than other players at their elo level, ex.time management,# of blunders,advantage captilization
-#add function to download their games as a csv,pgn,etc...
 #Blunder %
 
 
@@ -48,6 +46,8 @@ shinyApp(ui, server)
 
 
 #To Do Reasonably Easily
+#add function to download their games as a csv,pgn,etc...
+#performace by time of day
 #show different ways they win
 #show different ways they lose
 #show different ways they draw
@@ -57,6 +57,7 @@ shinyApp(ui, server)
 
 
 #Done
+#fix the UI on first page
 #Segment Server into functions so that everything that is code related is defined elsewhere
 #Rewrite parts of code to make it into repeatable functions for readablitiy
 #add multiple time mangement graphs
@@ -74,3 +75,7 @@ shinyApp(ui, server)
 #extract time spent per move as a list
 #breakdown time spent per move
 #Reset the elo change after the end of every year
+#fix the loading bars for the time graph
+#Elo Forecasting Algorithim ()Maybe use a genetic algorithim trained on randomly selected accounts from all elo ranges
+#implement the GA into the server
+#updated graphs 456 in data to auto load

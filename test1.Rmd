@@ -1071,7 +1071,7 @@ predict_future_elo <- function(current_state, weights, iterations) {
     # Update the current state for the next iteration
     # Here you might adjust current_state based on your rules
     # This is an example; adjust as needed based on your logic
-    current_state[1] <- current_state[1] + rnorm(1, mean = 0, sd = 202)  # Simulate opponentElo change
+    current_state[1] <- current_state[1] + rnorm(1, mean = 0, sd = 10)  # Simulate opponentElo change
     current_state[4] <- current_state[4] + 1  # Increment Move_Number.y
     current_state[6] <- current_state[6] + 1  # Increment GameNumber.y
     # other updates based on your model logic...
