@@ -21,10 +21,12 @@ source("server.R")
 # Run the Shiny app
 shinyApp(ui, server)
 
-#Currently In Progress
-#fix whatever made it not work (Constant)
-#Fix the issue with result_df2 not getting more than 1 game
-#fix issue with merged_data getting the number of moves from input and change it to number of games
+#Currently In Progress fix whatever made it not work
+
+#double check moves so that it is getting the correct moves for each game with an eval. In results_df_scorea
+
+#change the opponenets in time graphs so that it is User Vs Opponent
+#fix timepermove not correctly alocating time
 #Adjust the Code so that all necessary data is stored in reactive values
 #Make sure that the code does not collect or transform data more than once
 
@@ -79,3 +81,5 @@ shinyApp(ui, server)
 #Elo Forecasting Algorithim ()Maybe use a genetic algorithim trained on randomly selected accounts from all elo ranges
 #implement the GA into the server
 #updated graphs 456 in data to auto load
+#Fix the issue with result_df2 not getting more than 1 game
+#fix issue with merged_data getting the number of moves from input and change it to number of games

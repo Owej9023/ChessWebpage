@@ -483,37 +483,67 @@ output$plotOutput5 <- renderPlotly({
     
     # Analyze moves using Stockfish and combine results
     results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
-    moves_string <- paste(unlist(combined_data[[1]]$Move), collapse = " ")
     
-    aaresults <- py$analyze_each_move(moves_string, depth = engine_depth, stockfish_path = stockfish_path)
+    # Initialize an empty data frame to store the results
+    game_results_df <- data.frame()
     
-    # Convert the results to a dataframe and remove duplicates
-    game_results_df <- unique(as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE))
-    names(game_results_df) <- c("Move", "Score")
+    # Loop through the first num_games_to_plot games
     
+    # Initialize an empty data frame for game results
+    game_results_df <- data.frame()
+    
+    # Initialize an empty data frame for game results outside the loop
+
+    for (i in 1:num_games_to_plot) {
+      # Extract the moves for the current game
+      moves_string <- paste(unlist(combined_data[[i]][["Move"]]), collapse = " ")
+      
+      # Analyze the moves using Stockfish
+      aaresults <- py$analyze_each_move(moves_string, depth = engine_depth, stockfish_path = stockfish_path)
+      
+      # Convert the results to a dataframe for the current game
+      current_game_df <- as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE)
+      
+      # Create a numeric game identifier
+      current_game_df$game_id <- i  # Use the loop index as the game ID
+      
+      # Check for duplicates based on game_id and other relevant columns
+      # Here, we can use the unique() function to remove any duplicate rows based on game_id
+      unique_game_df <- current_game_df[!duplicated(current_game_df), ]
+      
+      # Append the unique game results to the overall game_results_df
+      game_results_df <- rbind(game_results_df, unique_game_df)
+    }
+    
+    #game_results_df <- unique(game_results_df)
+    # The game_results_df now contains the Stockfish analysis for all games
+    
+    
+    names(current_game_df) <- c("Move", "Score")
     # Append results to the main dataframe
-    results_df_scorea <- rbind(results_df_scorea, game_results_df)
-    
+    results_df_scorea <- rbind(results_df_scorea, current_game_df)
     ### End of Stockfish Analysis ###
-    
     # Ensure zzztest_subset matches results_df_scorea length
     zzztest_subset <- zzztest[1:min(nrow(zzztest), nrow(results_df_scorea)), ]
-    
+    results_df_scorea <- results_df_scorea[1:min(nrow(results_df_scorea), nrow(zzztest)), ]
+    browser()
+    #zzztest_subset<-zzztest
     # Merge data
     merged_data_complete <- cbind(zzztest_subset, results_df_scorea)
-    
+    browser()
     # Generate usernames based on game and move numbers
     usernames <- ifelse(seq_along(merged_data_complete$game_number) %% 2 == 1,
                         combined_df$black$username[merged_data_complete$game_number],
                         combined_df$white$username[merged_data_complete$game_number])
-    
     # Merge usernames with the data
-    merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors = FALSE), merged_data_complete)
     
+    browser()
+    merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors = FALSE), merged_data_complete)
+    browser()
     # Adjust the 'Score' column
     merged_data_complete2 <- merged_data_complete2[, -6]
     merged_data_complete2$Score <- as.numeric(merged_data_complete2$Score)
-    
+    browser()
     # Identify even positions and invert scores for Black moves
     even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
     merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
@@ -521,6 +551,8 @@ output$plotOutput5 <- renderPlotly({
     ### End of data processing for the second graph ###
     
     browser()
+    
+    
     
     output$TimePlotOutput <- renderPlot({
       ggplot(data = zzztest, aes(x = move_number, y = time_per_move, color = time_class)) +
