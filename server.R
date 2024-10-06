@@ -17,7 +17,7 @@ library(purrr)
 
 
 server <- function(input, output, session) {
-
+  source("Server_Logic_Chess.R")
   combined_df <- reactiveVal(NULL)
   result_df<-reactiveVal(NULL)
   merged_data_complete2<-reactiveVal(NULL)
@@ -337,7 +337,7 @@ output$plotOutput5 <- renderPlotly({
     py_run_string("
 import chess
 import chess.engine
-engine_depth<-1
+engine_depth = 1
 move_scores = []
 
 def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/stockfish'):
@@ -348,7 +348,6 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
             board.push_san(move)
             info = engine.analyse(board, chess.engine.Limit(depth=depth))
             
-            # Handle mate scores
             mate_in = info['score'].relative.mate()
             if mate_in is not None:
                 if mate_in == 0:
@@ -358,7 +357,6 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
             else:
                 score = info['score'].relative.score() / 100  # Normalize centipawn score
             
-            # Invert score for Black
             if board.turn == chess.BLACK:
                 score = -score
             
@@ -368,29 +366,24 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
     
     source("Server_Logic_Chess.R")
     
-    
-    
-    combined_df <- combined_df()  # Load combined_df once
+    combined_df <- combined_df()
     progress <- shiny::Progress$new()
     progress$set(message = "Processing games", value = 0)
-    on.exit(progress$close())  # Ensure progress is closed after completion
+    on.exit(progress$close())
     
     selected_time_class <- input$timeClass
     num_games_to_plot <- input$numGames
     
-    # Filter and limit the data
     filtered_data <- combined_df %>%
       filter(rules == "chess", rated == TRUE) %>%
       tail(num_games_to_plot)
     
-    # Precompute total moves for progress bar
     total_moves <- sum(sapply(filtered_data$pgn, function(pgn) {
       length(str_extract_all(pgn, "\\d+:\\d+(?:\\.\\d+)?")[[1]])
     }))
     
     ### Stockfish Analysis Section (Python Integration) ###
     
-    # Prepare pgn list and initialize lists for moves and timestamps
     pgn_list <- strsplit(filtered_data$pgn, "\n\n")
     all_moves <- vector("list", length(pgn_list))
     all_timestamps <- vector("list", length(pgn_list))
@@ -403,7 +396,6 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       all_timestamps[[i]] <- temp_aa$timestamps
     }
     
-    # Combine moves and timestamps into data frames
     combined_data <- vector("list", length(all_moves))
     for (i in seq_along(all_moves)) {
       moves <- all_moves[[i]]
@@ -419,127 +411,98 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       combined_data[[i]] <- game_data
     }
     
-    # Clean the moves
     combined_data <- lapply(combined_data, function(game_data) {
       game_data$Move <- clean_moves(game_data$Move)
       game_data
     })
     
-    # Extract time remaining for each move
-    timepermove <- vector("list", length(filtered_data$time_control))  # Pre-allocate list
-    move_counter <- 0
-    
-    # Initialize move_counter outside the loop
-    move_counter <- 0
-    
-    # Initialize move_counter outside the loop
-    move_counter <- 0
-    
-    # Initialize move_counter outside the loop
+    # Separate time tracking for Player 1 and Player 2
+    timepermove_player1 <- list()
+    timepermove_player2 <- list()
     move_counter <- 0
     
     for (i in seq_along(combined_data)) {
-      # Extract timestamps for both players
-      player1_timestamps <- as.numeric(as.POSIXct(combined_data[[i]]$Player1Timestamp, format = "%H:%M:%OS", tz = "UTC"))
-      player2_timestamps <- as.numeric(as.POSIXct(combined_data[[i]]$Player2Timestamp, format = "%H:%M:%OS", tz = "UTC"))
+      timestamps <- as.numeric(as.POSIXct(combined_data[[i]]$Timestamp, format = "%H:%M:%OS", tz = "UTC"))
+      timepermoveinterior_player1 <- numeric(ceiling((length(timestamps) - 1) / 2))
+      timepermoveinterior_player2 <- numeric(floor((length(timestamps) - 1) / 2))
       
-      # Initialize time spent for each move with decimal precision
-      timepermoveinterior <- numeric(min(length(player1_timestamps), length(player2_timestamps)) - 1)
+      player1_move_idx <- 1
+      player2_move_idx <- 1
       
-      # Iterate through the moves based on the turn (1 for player 1, 2 for player 2)
-      for (move in 1:(length(timepermoveinterior))) {
-        if (move %% 2 == 1) {  # Player 1's turn
-          time_spent <- player2_timestamps[move] - player1_timestamps[move]  # Player 1's move
-        } else {  # Player 2's turn
-          time_spent <- player1_timestamps[move] - player2_timestamps[move]  # Player 2's move
+      for (move in 1:(length(timestamps) - 1)) {
+        time_spent <- timestamps[move + 1] - timestamps[move]
+        
+        if (move %% 2 == 1) {
+          timepermoveinterior_player1[player1_move_idx] <- round(time_spent, 2)
+          player1_move_idx <- player1_move_idx + 1
+        } else {
+          timepermoveinterior_player2[player2_move_idx] <- round(time_spent, 2)
+          player2_move_idx <- player2_move_idx + 1
         }
         
-        # Store the calculated time spent for this move (with precision)
-        timepermoveinterior[move] <- round(time_spent, 2)  # Keep 2 decimal places for precision
         move_counter <- move_counter + 1
         
-        # Update progress
         if (move_counter %% 10 == 0) {
           progress$set(value = move_counter / total_moves)
         }
       }
       
-      # Store the time per move for the current game with decimals
-      timepermove[[i]] <- timepermoveinterior
+      timepermove_player1[[i]] <- timepermoveinterior_player1
+      timepermove_player2[[i]] <- timepermoveinterior_player2
     }
     
+    #browser()
     
-    browser()
-    # Create zzztest data using vectorized functions
-    zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
-      inner_list <- timepermove[[list_num]]
-      if (length(inner_list) > 0) {
-        data.frame(
-          time_per_move = unlist(inner_list),
-          move_number = seq_along(inner_list),
-          game_number = list_num,
-          time_class = rep(filtered_data$time_class[list_num], length(inner_list))
-        )
-      } else {
-        NULL
-      }
+    zzztest <- do.call(rbind, lapply(seq_along(timepermove_player1), function(list_num) {
+      player1_times <- timepermove_player1[[list_num]]
+      player2_times <- timepermove_player2[[list_num]]
+      
+      combined_times <- c(player1_times, player2_times)
+      move_nums <- seq_along(combined_times)
+      
+      data.frame(
+        time_per_move = combined_times,
+        move_number = move_nums,
+        game_number = list_num,
+        time_class = rep(filtered_data$time_class[list_num], length(combined_times))
+      )
     }))
     
     stockfish_path <- "stockfish-windows-x86-64-avx2"
     
-    # Analyze moves using Stockfish and combine results
     results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
-    
-    # Initialize an empty data frame to store the results
     game_results_df <- data.frame()
     
-    # Initialize an empty data frame for game results outside the loop
     for (i in 1:num_games_to_plot) {
-      # Extract the moves for the current game
       moves_string <- paste(unlist(combined_data[[i]][["Move"]]), collapse = " ")
-      
-      # Analyze the moves using Stockfish
       aaresults <- py$analyze_each_move(moves_string, depth = engine_depth, stockfish_path = stockfish_path)
-      
-      # Convert the results to a dataframe for the current game
       current_game_df <- as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE)
+      current_game_df$game_id <- i
       
-      # Create a numeric game identifier
-      current_game_df$game_id <- i  # Use the loop index as the game ID
-      
-      # Check for duplicates based on game_id and other relevant columns
-      # Here, we can use the unique() function to remove any duplicate rows based on game_id
       unique_game_df <- current_game_df[!duplicated(current_game_df), ]
-      
-      # Append the unique game results to the overall game_results_df
       game_results_df <- rbind(game_results_df, unique_game_df)
     }
     
     names(current_game_df) <- c("Move", "Score")
     results_df_scorea <- rbind(results_df_scorea, current_game_df)
-    
-    # Ensure zzztest_subset matches results_df_scorea length
     zzztest_subset <- zzztest[1:min(nrow(zzztest), nrow(results_df_scorea)), ]
     results_df_scorea <- results_df_scorea[1:min(nrow(results_df_scorea), nrow(zzztest)), ]
     
-    # Merge data
     merged_data_complete <- cbind(zzztest_subset, results_df_scorea)
     
-    # Generate usernames based on game and move numbers
     usernames <- ifelse(seq_along(merged_data_complete$game_number) %% 2 == 1,
                         combined_df$black$username[merged_data_complete$game_number],
                         combined_df$white$username[merged_data_complete$game_number])
     
     merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors = FALSE), merged_data_complete)
-    
-    # Adjust the 'Score' column
     merged_data_complete2$Score <- as.numeric(merged_data_complete2$Score)
     
-    # Identify even positions and invert scores for Black moves
     even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
     merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
     #browser()
-    # Output the results
+    merged_data_complete2 <- merged_data_complete2[merged_data_complete2$username == input$username, ]
+    
+    
     output$TimePlotOutput <- renderPlot({
       ggplot(data = zzztest, aes(x = move_number, y = time_per_move, color = time_class)) +
         geom_smooth() +
@@ -549,7 +512,7 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
     })
     
     output$TimePlotOutput2 <- renderPlot({
-      ggplot(merged_data_complete2, aes(x = move_number, y = (Score), size = time_per_move, color = username)) +
+      ggplot(merged_data_complete2, aes(x = move_number, y = Score, size = time_per_move, color = username)) +
         geom_point(alpha = 0.5) +
         ylim(-10, 10) +
         labs(x = "Move Number", y = "Evaluation Score", size = "Time Spent (s)", color = "Player") +
@@ -558,13 +521,10 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
     })
     
     output$TimeTableOutput <- renderDataTable({
-      # Select the columns you want to display in the table
       table_data <- merged_data_complete2[, c("move_number", "username", "Score", "time_per_move")]
       datatable(table_data, options = list(pageLength = 10))
     })
   })
-  
-
   
   observeEvent(input$GetForecastBtn, {
     

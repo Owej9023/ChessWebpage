@@ -18,6 +18,7 @@ library(stringr)
 source("ui.R")
 source("server.R")
 source("Server_Logic_Chess.R")
+
 # Run the Shiny app
 shinyApp(ui, server)
 
