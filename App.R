@@ -17,14 +17,11 @@ library(stringr)
 # Source the UI and server definitions
 source("ui.R")
 source("server.R")
-
+source("Server_Logic_Chess.R")
 # Run the Shiny app
 shinyApp(ui, server)
 
 #Currently In Progress fix whatever made it not work
-
-#double check moves so that it is getting the correct moves for each game with an eval. In results_df_scorea
-
 #change the opponenets in time graphs so that it is User Vs Opponent
 #fix timepermove not correctly alocating time
 #Adjust the Code so that all necessary data is stored in reactive values
@@ -83,3 +80,4 @@ shinyApp(ui, server)
 #updated graphs 456 in data to auto load
 #Fix the issue with result_df2 not getting more than 1 game
 #fix issue with merged_data getting the number of moves from input and change it to number of games
+#double check moves so that it is getting the correct moves for each game with an eval. In results_df_scorea

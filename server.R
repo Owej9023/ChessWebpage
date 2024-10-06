@@ -14,39 +14,6 @@ library(reticulate)
 library(stringr)
 library(purrr)
 
-py_run_string("
-import chess
-import chess.engine
-engine_depth<-1
-move_scores = []
-
-def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/stockfish'):
-    with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
-        board = chess.Board()
-        moves = moves_str.split()
-        for move in moves:
-            board.push_san(move)
-            info = engine.analyse(board, chess.engine.Limit(depth=depth))
-            
-            # Handle mate scores
-            mate_in = info['score'].relative.mate()
-            if mate_in is not None:
-                if mate_in == 0:
-                    score = 10000  # Checkmate
-                else:
-                    score = 10000 * (mate_in / abs(mate_in))
-            else:
-                score = info['score'].relative.score() / 100  # Normalize centipawn score
-            
-            # Invert score for Black
-            if board.turn == chess.BLACK:
-                score = -score
-            
-            move_scores.append((move, score))
-        return move_scores
-    ")
-
-source("Server_Logic_Chess.R")
 
 
 server <- function(input, output, session) {
@@ -363,10 +330,45 @@ output$plotOutput5 <- renderPlotly({
 
   })
   
-
   observeEvent(input$GetTimeBtn, {
-    engine_depth<-as.integer(input$EngineDepth)
+    engine_depth <- as.integer(input$EngineDepth)
     py$engine_depth <- engine_depth
+    
+    py_run_string("
+import chess
+import chess.engine
+engine_depth<-1
+move_scores = []
+
+def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/stockfish'):
+    with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
+        board = chess.Board()
+        moves = moves_str.split()
+        for move in moves:
+            board.push_san(move)
+            info = engine.analyse(board, chess.engine.Limit(depth=depth))
+            
+            # Handle mate scores
+            mate_in = info['score'].relative.mate()
+            if mate_in is not None:
+                if mate_in == 0:
+                    score = 10000  # Checkmate
+                else:
+                    score = 10000 * (mate_in / abs(mate_in))
+            else:
+                score = info['score'].relative.score() / 100  # Normalize centipawn score
+            
+            # Invert score for Black
+            if board.turn == chess.BLACK:
+                score = -score
+            
+            move_scores.append((move, score))
+        return move_scores
+    ")
+    
+    source("Server_Logic_Chess.R")
+    
+    
     
     combined_df <- combined_df()  # Load combined_df once
     progress <- shiny::Progress$new()
@@ -384,62 +386,6 @@ output$plotOutput5 <- renderPlotly({
     # Precompute total moves for progress bar
     total_moves <- sum(sapply(filtered_data$pgn, function(pgn) {
       length(str_extract_all(pgn, "\\d+:\\d+(?:\\.\\d+)?")[[1]])
-    }))
-    
-    timepermove <- vector("list", length(filtered_data$time_control))  # Pre-allocate list
-    move_counter <- 0
-    
-    for (game_index in seq_along(filtered_data$time_control)) {
-      value <- filtered_data$time_control[game_index]
-      split_strings <- strsplit(value, "\\+")[[1]]
-      Length_of_Game_For_Each_Player <- as.numeric(split_strings[1])
-      time_in_hhmm <- sprintf("%02d:%02d", Length_of_Game_For_Each_Player %/% 60, Length_of_Game_For_Each_Player %% 60)
-      
-      set_value <- time_in_hhmm
-      set_value1 <- time_in_hhmm
-      
-      matches <- str_extract_all(filtered_data$pgn[game_index], "\\d+:\\d+(?:\\.\\d+)?")[[1]]
-      
-      timepermoveinterior <- numeric(length(matches))
-      
-      for (move in seq_along(matches)) {
-        if (move %% 2 == 0) {
-          m2 <- as.character(matches[move])
-          NewMatches <- as.POSIXct(m2, format = "%M:%S")
-          timeRemaining <- round(subtract_time(set_value, NewMatches), 1)
-          set_value <- m2
-        } else {
-          m1 <- if (move == 1) set_value1 else as.character(matches[move])
-          NewMatches1 <- as.POSIXct(m1, format = "%M:%S")
-          timeRemaining <- round(subtract_time(set_value1, NewMatches1), 1)
-          set_value1 <- m1
-        }
-        
-        timepermoveinterior[move] <- timeRemaining
-        move_counter <- move_counter + 1
-        
-        # Update progress
-        if (move_counter %% 10 == 0) {
-          progress$set(value = move_counter / total_moves)
-        }
-      }
-      
-      timepermove[[game_index]] <- timepermoveinterior
-    }
-    
-    # Create zzztest data using vectorized functions
-    zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
-      inner_list <- timepermove[[list_num]]
-      if (length(inner_list) > 0) {
-        data.frame(
-          time_per_move = unlist(inner_list),
-          move_number = seq_along(inner_list),
-          game_number = list_num,
-          time_class = rep(filtered_data$time_class[list_num], length(inner_list))
-        )
-      } else {
-        NULL
-      }
     }))
     
     ### Stockfish Analysis Section (Python Integration) ###
@@ -479,6 +425,66 @@ output$plotOutput5 <- renderPlotly({
       game_data
     })
     
+    # Extract time remaining for each move
+    timepermove <- vector("list", length(filtered_data$time_control))  # Pre-allocate list
+    move_counter <- 0
+    
+    # Initialize move_counter outside the loop
+    move_counter <- 0
+    
+    # Initialize move_counter outside the loop
+    move_counter <- 0
+    
+    # Initialize move_counter outside the loop
+    move_counter <- 0
+    
+    for (i in seq_along(combined_data)) {
+      # Extract timestamps for both players
+      player1_timestamps <- as.numeric(as.POSIXct(combined_data[[i]]$Player1Timestamp, format = "%H:%M:%OS", tz = "UTC"))
+      player2_timestamps <- as.numeric(as.POSIXct(combined_data[[i]]$Player2Timestamp, format = "%H:%M:%OS", tz = "UTC"))
+      
+      # Initialize time spent for each move with decimal precision
+      timepermoveinterior <- numeric(min(length(player1_timestamps), length(player2_timestamps)) - 1)
+      
+      # Iterate through the moves based on the turn (1 for player 1, 2 for player 2)
+      for (move in 1:(length(timepermoveinterior))) {
+        if (move %% 2 == 1) {  # Player 1's turn
+          time_spent <- player2_timestamps[move] - player1_timestamps[move]  # Player 1's move
+        } else {  # Player 2's turn
+          time_spent <- player1_timestamps[move] - player2_timestamps[move]  # Player 2's move
+        }
+        
+        # Store the calculated time spent for this move (with precision)
+        timepermoveinterior[move] <- round(time_spent, 2)  # Keep 2 decimal places for precision
+        move_counter <- move_counter + 1
+        
+        # Update progress
+        if (move_counter %% 10 == 0) {
+          progress$set(value = move_counter / total_moves)
+        }
+      }
+      
+      # Store the time per move for the current game with decimals
+      timepermove[[i]] <- timepermoveinterior
+    }
+    
+    
+    browser()
+    # Create zzztest data using vectorized functions
+    zzztest <- do.call(rbind, lapply(seq_along(timepermove), function(list_num) {
+      inner_list <- timepermove[[list_num]]
+      if (length(inner_list) > 0) {
+        data.frame(
+          time_per_move = unlist(inner_list),
+          move_number = seq_along(inner_list),
+          game_number = list_num,
+          time_class = rep(filtered_data$time_class[list_num], length(inner_list))
+        )
+      } else {
+        NULL
+      }
+    }))
+    
     stockfish_path <- "stockfish-windows-x86-64-avx2"
     
     # Analyze moves using Stockfish and combine results
@@ -487,13 +493,7 @@ output$plotOutput5 <- renderPlotly({
     # Initialize an empty data frame to store the results
     game_results_df <- data.frame()
     
-    # Loop through the first num_games_to_plot games
-    
-    # Initialize an empty data frame for game results
-    game_results_df <- data.frame()
-    
     # Initialize an empty data frame for game results outside the loop
-
     for (i in 1:num_games_to_plot) {
       # Extract the moves for the current game
       moves_string <- paste(unlist(combined_data[[i]][["Move"]]), collapse = " ")
@@ -515,45 +515,31 @@ output$plotOutput5 <- renderPlotly({
       game_results_df <- rbind(game_results_df, unique_game_df)
     }
     
-    #game_results_df <- unique(game_results_df)
-    # The game_results_df now contains the Stockfish analysis for all games
-    
-    
     names(current_game_df) <- c("Move", "Score")
-    # Append results to the main dataframe
     results_df_scorea <- rbind(results_df_scorea, current_game_df)
-    ### End of Stockfish Analysis ###
+    
     # Ensure zzztest_subset matches results_df_scorea length
     zzztest_subset <- zzztest[1:min(nrow(zzztest), nrow(results_df_scorea)), ]
     results_df_scorea <- results_df_scorea[1:min(nrow(results_df_scorea), nrow(zzztest)), ]
-    browser()
-    #zzztest_subset<-zzztest
+    
     # Merge data
     merged_data_complete <- cbind(zzztest_subset, results_df_scorea)
-    browser()
+    
     # Generate usernames based on game and move numbers
     usernames <- ifelse(seq_along(merged_data_complete$game_number) %% 2 == 1,
                         combined_df$black$username[merged_data_complete$game_number],
                         combined_df$white$username[merged_data_complete$game_number])
-    # Merge usernames with the data
     
-    browser()
     merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors = FALSE), merged_data_complete)
-    browser()
+    
     # Adjust the 'Score' column
-    merged_data_complete2 <- merged_data_complete2[, -6]
     merged_data_complete2$Score <- as.numeric(merged_data_complete2$Score)
-    browser()
+    
     # Identify even positions and invert scores for Black moves
     even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
     merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
-    merged_data_complete2(merged_data_complete2)
-    ### End of data processing for the second graph ###
-    
-    browser()
-    
-    
-    
+    #browser()
+    # Output the results
     output$TimePlotOutput <- renderPlot({
       ggplot(data = zzztest, aes(x = move_number, y = time_per_move, color = time_class)) +
         geom_smooth() +
@@ -570,8 +556,15 @@ output$plotOutput5 <- renderPlotly({
         ggtitle("Bubble Plot of Move Number and Evaluation Score with Time Spent and Players") +
         theme_minimal()
     })
+    
+    output$TimeTableOutput <- renderDataTable({
+      # Select the columns you want to display in the table
+      table_data <- merged_data_complete2[, c("move_number", "username", "Score", "time_per_move")]
+      datatable(table_data, options = list(pageLength = 10))
+    })
   })
   
+
   
   observeEvent(input$GetForecastBtn, {
     

@@ -10,6 +10,7 @@ library(shiny)
 library(shinyWidgets)
 library(plotly)
 library(GA)
+library(DT)
 ui <- fluidPage(
   # App title
   titlePanel("Chess Game Data"),
@@ -75,7 +76,9 @@ ui <- fluidPage(
                mainPanel(
                  plotOutput("TimePlotOutput"),
                  br(),  # Add space between plots
-                 plotOutput("TimePlotOutput2")
+                 plotOutput("TimePlotOutput2"),
+                 br(),
+                 dataTableOutput("TimeTableOutput")
                )
              )
     ),
