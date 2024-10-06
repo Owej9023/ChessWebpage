@@ -416,46 +416,62 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       game_data
     })
     
-    # Separate time tracking for Player 1 and Player 2
-    timepermove_player1 <- list()
-    timepermove_player2 <- list()
-    move_counter <- 0
+    # Function to convert countdown timestamp to total seconds
+    convert_timestamp_to_seconds <- function(timestamp) {
+      parts <- unlist(strsplit(timestamp, ":"))
+      minutes <- as.numeric(parts[1])
+      seconds <- as.numeric(parts[2])
+      total_seconds <- minutes * 60 + seconds
+      return(total_seconds)
+    }
     
+    # Initialize result storage for each game
+    all_timepermove_player1 <- list()
+    all_timepermove_player2 <- list()
+    
+    # Processing move times
     for (i in seq_along(combined_data)) {
-      timestamps <- as.numeric(as.POSIXct(combined_data[[i]]$Timestamp, format = "%H:%M:%OS", tz = "UTC"))
-      timepermoveinterior_player1 <- numeric(ceiling((length(timestamps) - 1) / 2))
-      timepermoveinterior_player2 <- numeric(floor((length(timestamps) - 1) / 2))
+      timestamps <- combined_data[[i]]$Timestamp
+      total_time <- sapply(timestamps, convert_timestamp_to_seconds)
       
-      player1_move_idx <- 1
-      player2_move_idx <- 1
+      # Variables for time tracking for the current game
+      timepermove_player1 <- c()
+      timepermove_player2 <- c()
       
-      for (move in 1:(length(timestamps) - 1)) {
-        time_spent <- timestamps[move + 1] - timestamps[move]
-        
-        if (move %% 2 == 1) {
-          timepermoveinterior_player1[player1_move_idx] <- round(time_spent, 2)
-          player1_move_idx <- player1_move_idx + 1
-        } else {
-          timepermoveinterior_player2[player2_move_idx] <- round(time_spent, 2)
-          player2_move_idx <- player2_move_idx + 1
+      # Main processing loop
+      for (move in 1:(length(total_time) - 2)) {  # Adjust to length - 2 for index safety
+        if (is.na(total_time[move]) || is.na(total_time[move + 2])) {
+          next  # Skip this iteration if any timestamp is NA
         }
         
-        move_counter <- move_counter + 1
+        # Calculate time spent
+        time_spent <- total_time[move] - total_time[move + 2]
         
-        if (move_counter %% 10 == 0) {
-          progress$set(value = move_counter / total_moves)
+        if (time_spent < 0) {
+          cat("Negative time detected for move:", move, 
+              "Time spent:", time_spent, 
+              "Player:", ifelse(move %% 2 == 1, "Player 1 (White)", "Player 2 (Black)"), 
+              "\n")
+        }
+        
+        if (move %% 2 == 1) {
+          # Player 1 (White)
+          timepermove_player1 <- c(timepermove_player1, time_spent)  # Convert to tenths
+        } else {
+          # Player 2 (Black)
+          timepermove_player2 <- c(timepermove_player2, time_spent)  # Convert to tenths
         }
       }
       
-      timepermove_player1[[i]] <- timepermoveinterior_player1
-      timepermove_player2[[i]] <- timepermoveinterior_player2
+      # Store results for this game
+      all_timepermove_player1[[i]] <- timepermove_player1
+      all_timepermove_player2[[i]] <- timepermove_player2
     }
-    
-    #browser()
-    
-    zzztest <- do.call(rbind, lapply(seq_along(timepermove_player1), function(list_num) {
-      player1_times <- timepermove_player1[[list_num]]
-      player2_times <- timepermove_player2[[list_num]]
+    browser()
+    # Combine time data into a single data frame
+    zzztest <- do.call(rbind, lapply(seq_along(all_timepermove_player1), function(list_num) {
+      player1_times <- all_timepermove_player1[[list_num]]
+      player2_times <- all_timepermove_player2[[list_num]]
       
       combined_times <- c(player1_times, player2_times)
       move_nums <- seq_along(combined_times)
@@ -467,7 +483,7 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
         time_class = rep(filtered_data$time_class[list_num], length(combined_times))
       )
     }))
-    
+    browser()
     stockfish_path <- "stockfish-windows-x86-64-avx2"
     
     results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
@@ -499,9 +515,8 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
     
     even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
     merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
-    #browser()
-    merged_data_complete2 <- merged_data_complete2[merged_data_complete2$username == input$username, ]
     
+    merged_data_complete2 <- merged_data_complete2[merged_data_complete2$username == input$username, ]
     
     output$TimePlotOutput <- renderPlot({
       ggplot(data = zzztest, aes(x = move_number, y = time_per_move, color = time_class)) +
@@ -525,6 +540,7 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       datatable(table_data, options = list(pageLength = 10))
     })
   })
+  
   
   observeEvent(input$GetForecastBtn, {
     

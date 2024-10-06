@@ -1225,3 +1225,282 @@ ggplot(filtered_data, aes(x = time_per_move, y = Score, color = Move)) +
   labs(x = "Time", y = "Score")
 
 ```
+
+```{r}
+combined_data <- list(
+  `1` = list(
+    list("Move" = "b3", "Timestamp" = "0:03:00"),
+    list("Move" = "f6", "Timestamp" = "0:02:59.5"),
+    list("Move" = "Bb2", "Timestamp" = "0:02:59.3"),
+    list("Move" = "e5", "Timestamp" = "0:02:59.4"),
+    list("Move" = "e3", "Timestamp" = "0:02:58.5"),
+    list("Move" = "Nc6", "Timestamp" = "0:02:59.3"),
+    list("Move" = "Qf3", "Timestamp" = "0:02:57.6"),
+    list("Move" = "Nge7", "Timestamp" = "0:02:53.8"),
+    list("Move" = "Bb5", "Timestamp" = "0:02:56"),
+    list("Move" = "a6", "Timestamp" = "0:02:51.5"),
+    list("Move" = "Bxc6", "Timestamp" = "0:02:55.2"),
+    list("Move" = "Nxc6", "Timestamp" = "0:02:51.4"),
+    list("Move" = "Ne2", "Timestamp" = "0:02:54.1"),
+    list("Move" = "d5", "Timestamp" = "0:02:49.4"),
+    list("Move" = "Qh5+", "Timestamp" = "0:02:52.5"),
+    list("Move" = "g6", "Timestamp" = "0:02:47.1"),
+    list("Move" = "Qh4", "Timestamp" = "0:02:52"),
+    list("Move" = "Bg7", "Timestamp" = "0:02:45.2"),
+    list("Move" = "Ng3", "Timestamp" = "0:02:48.8"),
+    list("Move" = "O-O", "Timestamp" = "0:02:41.8"),
+    list("Move" = "Nc3", "Timestamp" = "0:02:44.8"),
+    list("Move" = "d4", "Timestamp" = "0:02:40.8"),
+    list("Move" = "Na4", "Timestamp" = "0:02:42"),
+    list("Move" = "dxe3", "Timestamp" = "0:02:38.1"),
+    list("Move" = "fxe3", "Timestamp" = "0:02:38"),
+    list("Move" = "b6", "Timestamp" = "0:02:29.8"),
+    list("Move" = "O-O", "Timestamp" = "0:02:30.6"),
+    list("Move" = "f5", "Timestamp" = "0:02:20.2"),
+    list("Move" = "Qc4+", "Timestamp" = "0:02:28.4"),
+    list("Move" = "Kh8", "Timestamp" = "0:02:17"),
+    list("Move" = "Qxc6", "Timestamp" = "0:02:26.7"),
+    list("Move" = "Bd7", "Timestamp" = "0:02:15.1"),
+    list("Move" = "Qf3", "Timestamp" = "0:02:23.7"),
+    list("Move" = "Bb5", "Timestamp" = "0:02:14.1"),
+    list("Move" = "c4", "Timestamp" = "0:02:21.6"),
+    list("Move" = "Bxa4", "Timestamp" = "0:02:12.5"),
+    list("Move" = "bxa4", "Timestamp" = "0:02:20.4"),
+    list("Move" = "Qxd2", "Timestamp" = "0:02:10.8"),
+    list("Move" = "Rab1", "Timestamp" = "0:02:12.4"),
+    list("Move" = "Rad8", "Timestamp" = "0:02:02.1"),
+    list("Move" = "Rfd1", "Timestamp" = "0:02:03"),
+    list("Move" = "Qc2", "Timestamp" = "0:01:56.6"),
+    list("Move" = "a5", "Timestamp" = "0:01:47.5"),
+    list("Move" = "e4", "Timestamp" = "0:01:44.6"),
+    list("Move" = "Qe2", "Timestamp" = "0:01:45.2"),
+    list("Move" = "Rxd1+", "Timestamp" = "0:01:35.9"),
+    list("Move" = "Qxd1", "Timestamp" = "0:01:42.6"),
+    list("Move" = "Qxd1+", "Timestamp" = "0:01:34.4"),
+    list("Move" = "Rxd1", "Timestamp" = "0:01:40.9"),
+    list("Move" = "Bxb2", "Timestamp" = "0:01:33.9"),
+    list("Move" = "axb6", "Timestamp" = "0:01:37.5"),
+    list("Move" = "cxb6", "Timestamp" = "0:01:32.5"),
+    list("Move" = "Rb1", "Timestamp" = "0:01:36.2"),
+    list("Move" = "Be5", "Timestamp" = "0:01:25.9"),
+    list("Move" = "Rxb6", "Timestamp" = "0:01:33.2"),
+    list("Move" = "Rc8", "Timestamp" = "0:01:24.7"),
+    list("Move" = "Rb4", "Timestamp" = "0:01:25.6"),
+    list("Move" = "Bc3", "Timestamp" = "0:01:20.5"),
+    list("Move" = "Ra4", "Timestamp" = "0:01:23.8"),
+    list("Move" = "a5", "Timestamp" = "0:01:19.4"),
+    list("Move" = "Ne2", "Timestamp" = "0:01:22.6"),
+    list("Move" = "Bd2", "Timestamp" = "0:01:17.5"),
+    list("Move" = "Kf2", "Timestamp" = "0:01:15.7"),
+    list("Move" = "Kg7", "Timestamp" = "0:01:14.9"),
+    list("Move" = "Nd4", "Timestamp" = "0:01:14.8"),
+    list("Move" = "Bb4", "Timestamp" = "0:01:09.4"),
+    list("Move" = "a3", "Timestamp" = "0:01:12.8"),
+    list("Move" = "Bc3", "Timestamp" = "0:01:07.5"),
+    list("Move" = "Ke2", "Timestamp" = "0:01:10.2"),
+    list("Move" = "Kh6", "Timestamp" = "0:01:03.3"),
+    list("Move" = "Kd1", "Timestamp" = "0:01:05.1"),
+    list("Move" = "Rb8", "Timestamp" = "0:00:56.6"),
+    list("Move" = "Kc2", "Timestamp" = "0:01:03.1"),
+    list("Move" = "Be1", "Timestamp" = "0:00:54.6"),
+    list("Move" = "c5", "Timestamp" = "0:00:59.8"),
+    list("Move" = "Rc8", "Timestamp" = "0:00:53.4"),
+    list("Move" = "Rc4", "Timestamp" = "0:00:58.2"),
+    list("Move" = "Bf2", "Timestamp" = "0:00:49.1"),
+    list("Move" = "Rc3", "Timestamp" = "0:00:53.2"),
+    list("Move" = "Kg5", "Timestamp" = "0:00:44.2"),
+    list("Move" = "Kd2", "Timestamp" = "0:00:45.5"),
+    list("Move" = "f4", "Timestamp" = "0:00:38.7"),
+    list("Move" = "exf4+", "Timestamp" = "0:00:41.2"),
+    list("Move" = "Kxf4", "Timestamp" = "0:00:38.6"),
+    list("Move" = "Ne2+", "Timestamp" = "0:00:35.1"),
+    list("Move" = "Ke5", "Timestamp" = "0:00:35.9"),
+    list("Move" = "c6", "Timestamp" = "0:00:34.3"),
+    list("Move" = "f3", "Timestamp" = "0:00:30.1"),
+    list("Move" = "Kf3", "Timestamp" = "0:00:32.9"),
+    list("Move" = "Nc4+", "Timestamp" = "0:00:31.6"),
+    list("Move" = "Ke4", "Timestamp" = "0:00:34.5"),
+    list("Move" = "Kc3", "Timestamp" = "0:00:30.8"),
+    list("Move" = "Kc2", "Timestamp" = "0:00:30.5"),
+    list("Move" = "Kd5", "Timestamp" = "0:00:33.8"),
+    list("Move" = "g3", "Timestamp" = "0:00:26.9"),
+    list("Move" = "Rxc6", "Timestamp" = "0:00:32.3"),
+    list("Move" = "Rxc6", "Timestamp" = "0:00:24.6"),
+    list("Move" = "Kxc6", "Timestamp" = "0:00:32.2"),
+    list("Move" = "Kd3", "Timestamp" = "0:00:22.9"),
+    list("Move" = "Kb5", "Timestamp" = "0:00:31"),
+    list("Move" = "Nc3+", "Timestamp" = "0:00:19.6"),
+    list("Move" = "Kc5", "Timestamp" = "0:00:29.3"),
+    list("Move" = "Ne4+", "Timestamp" = "0:00:18.1"),
+    list("Move" = "Kb5", "Timestamp" = "0:00:28.3"),
+    list("Move" = "Nd6+", "Timestamp" = "0:00:16.1"),
+    list("Move" = "Ka4", "Timestamp" = "0:00:27.5"),
+    list("Move" = "Nc4", "Timestamp" = "0:00:15"),
+    list("Move" = "Kb5", "Timestamp" = "0:00:25.3"),
+    list("Move" = "g4", "Timestamp" = "0:00:14"),
+    list("Move" = "h5", "Timestamp" = "0:00:24"),
+    list("Move" = "gxh5", "Timestamp" = "0:00:12.7"),
+    list("Move" = "gxh5", "Timestamp" = "0:00:23.9"),
+    list("Move" = "h3", "Timestamp" = "0:00:11.8"),
+    list("Move" = "h4", "Timestamp" = "0:00:22.8"),
+    list("Move" = "Nxe3", "Timestamp" = "0:00:10.3"),
+    list("Move" = "Bxe3", "Timestamp" = "0:00:21.4"),
+    list("Move" = "Kxe3", "Timestamp" = "0:00:09.8"),
+    list("Move" = "Ka4", "Timestamp" = "0:00:20.9"),
+    list("Move" = "Kf4", "Timestamp" = "0:00:08.4"),
+    list("Move" = "Kxa3", "Timestamp" = "0:00:20.8"),
+    list("Move" = "Kg4", "Timestamp" = "0:00:08"),
+    list("Move" = "Kb2", "Timestamp" = "0:00:20.7"),
+    list("Move" = "Kxh4", "Timestamp" = "0:00:07.6"),
+    list("Move" = "a4", "Timestamp" = "0:00:20.6"),
+    list("Move" = "Kg5", "Timestamp" = "0:00:07.5"),
+    list("Move" = "a3", "Timestamp" = "0:00:20.5"),
+    list("Move" = "h4", "Timestamp" = "0:00:07.2"),
+    list("Move" = "a2", "Timestamp" = "0:00:20.4"),
+    list("Move" = "h5", "Timestamp" = "0:00:06.9"),
+    list("Move" = "a1=Q", "Timestamp" = "0:00:20.3"),
+    list("Move" = "h6", "Timestamp" = "0:00:06.5"),
+    list("Move" = "Qh1", "Timestamp" = "0:00:20.1"),
+    list("Move" = "Kg6", "Timestamp" = "0:00:06.2"),
+    list("Move" = "Qg1+", "Timestamp" = "0:00:19.3"),
+    list("Move" = "Kh7", "Timestamp" = "0:00:04.9"),
+    list("Move" = "Qh2", "Timestamp" = "0:00:18.3"),
+    list("Move" = "Kg7", "Timestamp" = "0:00:04.2"),
+    list("Move" = "Kc3", "Timestamp" = "0:00:17.5"),
+    list("Move" = "h7", "Timestamp" = "0:00:02.9"),
+    list("Move" = "Qc7+", "Timestamp" = "0:00:16.7"),
+    list("Move" = "Kg8", "Timestamp" = "0:00:02.2"),
+    list("Move" = "Qd8+", "Timestamp" = "0:00:14.9"),
+    list("Move" = "Kg7", "Timestamp" = "0:00:01.7"),
+    list("Move" = "Qe7+", "Timestamp" = "0:00:14.3"),
+    list("Move" = "Kg8", "Timestamp" = "0:00:01"),
+    list("Move" = "Qe8+", "Timestamp" = "0:00:13.8")
+  ),
+  `2` = list(
+    list("Move" = "e4", "Timestamp" = "0:03:00"),
+    list("Move" = "c5", "Timestamp" = "0:02:59.7"),
+    list("Move" = "Nf3", "Timestamp" = "0:02:59.2"),
+    list("Move" = "Nc6", "Timestamp" = "0:02:58.9"),
+    list("Move" = "d4", "Timestamp" = "0:02:58.0"),
+    list("Move" = "cxd4", "Timestamp" = "0:02:57.4"),
+    list("Move" = "Nxd4", "Timestamp" = "0:02:56.8"),
+    list("Move" = "Nf6", "Timestamp" = "0:02:55.3"),
+    list("Move" = "Nc3", "Timestamp" = "0:02:54.0"),
+    list("Move" = "e5", "Timestamp" = "0:02:52.9"),
+    list("Move" = "Nf5", "Timestamp" = "0:02:50.2"),
+    list("Move" = "exf5", "Timestamp" = "0:02:48.1"),
+    list("Move" = "d5", "Timestamp" = "0:02:46.6"),
+    list("Move" = "Nxd4", "Timestamp" = "0:02:45.3"),
+    list("Move" = "Qxd4", "Timestamp" = "0:02:44.5"),
+    list("Move" = "dxc6", "Timestamp" = "0:02:42.8"),
+    list("Move" = "bxc6", "Timestamp" = "0:02:41.2"),
+    list("Move" = "Bd2", "Timestamp" = "0:02:40.6"),
+    list("Move" = "Qd4", "Timestamp" = "0:02:39.1"),
+    list("Move" = "O-O", "Timestamp" = "0:02:37.8"),
+    list("Move" = "e4", "Timestamp" = "0:02:36.4"),
+    list("Move" = "Bf4", "Timestamp" = "0:02:34.7"),
+    list("Move" = "g6", "Timestamp" = "0:02:33.1"),
+    list("Move" = "Bd3", "Timestamp" = "0:02:31.4"),
+    list("Move" = "c5", "Timestamp" = "0:02:29.8"),
+    list("Move" = "Nc4", "Timestamp" = "0:02:28.5"),
+    list("Move" = "Be3", "Timestamp" = "0:02:27.6"),
+    list("Move" = "f3", "Timestamp" = "0:02:25.2"),
+    list("Move" = "Bf2", "Timestamp" = "0:02:23.9"),
+    list("Move" = "Nxd6+", "Timestamp" = "0:02:22.4"),
+    list("Move" = "Qxd6", "Timestamp" = "0:02:20.8"),
+    list("Move" = "Bd5", "Timestamp" = "0:02:18.3"),
+    list("Move" = "Qf4", "Timestamp" = "0:02:16.5"),
+    list("Move" = "Bf6", "Timestamp" = "0:02:14.2"),
+    list("Move" = "f4", "Timestamp" = "0:02:12.7"),
+    list("Move" = "Nxf5", "Timestamp" = "0:02:10.4"),
+    list("Move" = "Bxd5", "Timestamp" = "0:02:08.6"),
+    list("Move" = "Rxd5", "Timestamp" = "0:02:06.5"),
+    list("Move" = "Rxe5", "Timestamp" = "0:02:04.8"),
+    list("Move" = "Rxe5", "Timestamp" = "0:02:03.1"),
+    list("Move" = "Kf6", "Timestamp" = "0:02:01.5"),
+    list("Move" = "h5", "Timestamp" = "0:01:59.8"),
+    list("Move" = "Rxe1", "Timestamp" = "0:01:58.4"),
+    list("Move" = "Kh7", "Timestamp" = "0:01:56.6"),
+    list("Move" = "Rxe8", "Timestamp" = "0:01:54.8"),
+    list("Move" = "Rxe8", "Timestamp" = "0:01:53.2"),
+    list("Move" = "h4", "Timestamp" = "0:01:52.4"),
+    list("Move" = "h4", "Timestamp" = "0:01:50.6"),
+    list("Move" = "h3", "Timestamp" = "0:01:48.9"),
+    list("Move" = "g3", "Timestamp" = "0:01:47.5"),
+    list("Move" = "Kf3", "Timestamp" = "0:01:46.1"),
+    list("Move" = "Kf4", "Timestamp" = "0:01:44.9"),
+    list("Move" = "g5", "Timestamp" = "0:01:43.3"),
+    list("Move" = "Kg3", "Timestamp" = "0:01:42.1"),
+    list("Move" = "Kg4", "Timestamp" = "0:01:40.9"),
+    list("Move" = "h3", "Timestamp" = "0:01:39.2"),
+    list("Move" = "h2", "Timestamp" = "0:01:37.8"),
+    list("Move" = "Kg3", "Timestamp" = "0:01:36.4"),
+    list("Move" = "Kg5", "Timestamp" = "0:01:35.1"),
+    list("Move" = "Kg5", "Timestamp" = "0:01:34.0"),
+    list("Move" = "Kg7", "Timestamp" = "0:01:32.8"),
+    list("Move" = "Kg7", "Timestamp" = "0:01:31.5"),
+    list("Move" = "Kg8", "Timestamp" = "0:01:29.2"),
+    list("Move" = "Kg9", "Timestamp" = "0:01:28.1"),
+    list("Move" = "Kg9", "Timestamp" = "0:01:26.6")
+  )
+)
+
+
+
+```
+
+
+```{r}
+convert_timestamp_to_seconds <- function(timestamp) {
+  parts <- unlist(strsplit(timestamp, "[:.]"))  # Split by colon and dot
+  hours <- as.numeric(parts[1])
+  minutes <- as.numeric(parts[2])
+  seconds <- as.numeric(parts[3])
+  tenths <- as.numeric(parts[4]) / 10  # Convert tenths to seconds
+  total_seconds <- (hours * 3600) + (minutes * 60) + seconds + tenths
+  return(total_seconds)
+}
+
+# Loop through each game in combined_data
+for (i in seq_along(combined_data)) {
+  # Number of moves for the current game
+  total_moves <- sum(sapply(combined_data[[i]], function(x) length(x$Timestamp)))
+
+  # Variables for time tracking
+  timepermove_player1 <- c()
+  timepermove_player2 <- c()
+
+  # Extract timestamps for the current game
+  timestamps <- sapply(combined_data[[i]], function(x) x$Timestamp)
+
+  # Convert timestamps to total time in seconds
+  total_time <- sapply(timestamps, convert_timestamp_to_seconds)
+
+
+  # Loop through moves, adjusting for total_time length
+  for (move in 1:(length(total_time) - 2)) {  # Adjust to length - 2 for index safety
+    if (is.na(total_time[move]) || is.na(total_time[move + 2])) {
+      next  # Skip this iteration if any timestamp is NA
+    }
+
+    # Calculate time spent
+    time_spent <- total_time[move] - total_time[move + 2]
+
+    }
+
+    if (move %% 2 == 1) {
+      # Player 1 (White)
+      timepermove_player1 <- c(timepermove_player1, time_spent)  # Convert to tenths
+    } else {
+      # Player 2 (Black)
+      timepermove_player2 <- c(timepermove_player2, time_spent)  # Convert to tenths
+    }
+  }
+
+}
+
+
+
+    
+    ```
+    

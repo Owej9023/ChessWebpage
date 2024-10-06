@@ -111,4 +111,12 @@ subtract_time <- function(set_value, variable) {
   return(result_time)
 }
 
-
+convert_timestamp_to_seconds <- function(timestamp) {
+  parts <- unlist(strsplit(timestamp, "[:.]"))  # Split by colon and dot
+  hours <- as.numeric(parts[1])
+  minutes <- as.numeric(parts[2])
+  seconds <- as.numeric(parts[3])
+  tenths <- as.numeric(parts[4]) / 10  # Convert tenths to seconds
+  total_seconds <- (hours * 3600) + (minutes * 60) + seconds + tenths
+  return(total_seconds)
+}

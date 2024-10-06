@@ -24,7 +24,8 @@ shinyApp(ui, server)
 
 #Currently In Progress fix whatever made it not work
 #change the opponenets in time graphs so that it is User Vs Opponent
-#fix timepermove not correctly alocating time
+#fix timepermove not correctly mathing out time
+#investigate why the timestamps are not correctly getting time from the pgns aka why some are negative
 #Adjust the Code so that all necessary data is stored in reactive values
 #Make sure that the code does not collect or transform data more than once
 
