@@ -23,9 +23,10 @@ source("Server_Logic_Chess.R")
 shinyApp(ui, server)
 
 #Currently In Progress fix whatever made it not work
+#fix smooth in the time so that it is only showing time spent by username (Identify player color and then filter out odd and even moves respectively)
+#bubble plot should be the change in evaluation and measure if player took a good move vs a bad move aka min score or max score 
 #change the opponenets in time graphs so that it is User Vs Opponent
-#fix timepermove not correctly mathing out time
-#investigate why the timestamps are not correctly getting time from the pgns aka why some are negative
+#investigate why and if the timestamps are not correctly getting time from the pgns aka why some are negative
 #Adjust the Code so that all necessary data is stored in reactive values
 #Make sure that the code does not collect or transform data more than once
 
@@ -83,3 +84,4 @@ shinyApp(ui, server)
 #Fix the issue with result_df2 not getting more than 1 game
 #fix issue with merged_data getting the number of moves from input and change it to number of games
 #double check moves so that it is getting the correct moves for each game with an eval. In results_df_scorea
+#fix timepermove not correctly mathing out time

@@ -415,15 +415,7 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       game_data$Move <- clean_moves(game_data$Move)
       game_data
     })
-    
-    # Function to convert countdown timestamp to total seconds
-    convert_timestamp_to_seconds <- function(timestamp) {
-      parts <- unlist(strsplit(timestamp, ":"))
-      minutes <- as.numeric(parts[1])
-      seconds <- as.numeric(parts[2])
-      total_seconds <- minutes * 60 + seconds
-      return(total_seconds)
-    }
+
     
     # Initialize result storage for each game
     all_timepermove_player1 <- list()
@@ -445,7 +437,7 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
         }
         
         # Calculate time spent
-        time_spent <- total_time[move] - total_time[move + 2]
+        time_spent <- round(total_time[move] - total_time[move + 2], 2)
         
         if (time_spent < 0) {
           cat("Negative time detected for move:", move, 
@@ -467,7 +459,7 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       all_timepermove_player1[[i]] <- timepermove_player1
       all_timepermove_player2[[i]] <- timepermove_player2
     }
-    browser()
+    
     # Combine time data into a single data frame
     zzztest <- do.call(rbind, lapply(seq_along(all_timepermove_player1), function(list_num) {
       player1_times <- all_timepermove_player1[[list_num]]
@@ -483,7 +475,7 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
         time_class = rep(filtered_data$time_class[list_num], length(combined_times))
       )
     }))
-    browser()
+    
     stockfish_path <- "stockfish-windows-x86-64-avx2"
     
     results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
