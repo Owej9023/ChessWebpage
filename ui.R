@@ -91,8 +91,11 @@ ui <- fluidPage(
                ),
                mainPanel(
                  plotOutput("forecastPlot"),   # Placeholder for forecast plot
-                 br(),                         # Add space
-                 textOutput("forecastText")    # Placeholder for forecast-related text output
+                 br(),# Add space
+                 div(
+                   h3("Elo Predictions"),
+                   textOutput("forecastText")    # Placeholder for forecast-related text output
+                 )
                )
              )
     )

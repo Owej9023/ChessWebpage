@@ -507,7 +507,8 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
     
     even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
     merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
-    
+
+    merged_data_complete2(merged_data_complete)
     merged_data_complete2 <- merged_data_complete2[merged_data_complete2$username == input$username, ]
     
     output$TimePlotOutput <- renderPlot({
@@ -536,15 +537,15 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
   
   observeEvent(input$GetForecastBtn, {
     
-    result_df<-result_df()
-    merged_data_complete2<-merged_data_complete2()
+    result_df <- result_df()
+    merged_data_complete2 <- merged_data_complete2()
+    merged_data_complete2 <- merged_data_complete2[, -ncol(merged_data_complete2)]
+    
     # First, merge result_df and merged_data_complete2
     result_df <- left_join(result_df, merged_data_complete2, by = "game_number")
-    
     # Then slice the result_df to match the number of rows in merged_data_complete2
     result_df <- result_df %>%
       slice(1:nrow(merged_data_complete2))
-    
     username <- input$username
     
     # Apply all mutations in one pipeline
@@ -555,7 +556,6 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
           Black == username ~ as.numeric(BlackElo),    # If the user is playing Black, use BlackElo
           TRUE ~ NA_real_                               # NA for games not involving the user
         ),
-        # Check for NA values in current_elo and replace them with the corresponding Elo
         current_elo = ifelse(is.na(current_elo),
                              ifelse(White == username, as.numeric(WhiteElo), as.numeric(BlackElo)),
                              current_elo),
@@ -573,66 +573,91 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
         )
       )
     
-    
     # Extract features (X) and target (y)
-    X <- as.matrix(result_df2[, c("opponentElo", "game_result_numeric","time_per_move","move_number","Score","game_number")])  # Use opponent_elo and game_result as features
-    y_true <- result_df2$current_elo  # Use current_elo as the target variable
+    result_df2$Score <- as.numeric(result_df2$Score)
+    result_df2$Score <- as.numeric(result_df2$year)
+    result_df2$Score <- as.numeric(result_df2$month)
+    result_df2$Score <- as.numeric(result_df2$week)
+    
+    X <- as.matrix(result_df2[, c("opponentElo", "game_result_numeric", "time_per_move", "move_number", "Score", "game_number", "year", "week", "month")])
+    y_true <- result_df2$current_elo
     
     # Define the fitness function (e.g., minimize MSE between predicted Elo and actual Elo)
     fitness_function <- function(params, X, y_true) {
-      # Predict Elo using a linear combination of features and weights (params)
       y_pred <- X %*% params
-      mse <- mean((y_true - y_pred)^2)  # Mean Squared Error
-      return(-mse)  # We return the negative because GA maximizes by default
+      mse <- mean((y_true - y_pred)^2)
+      return(-mse)  # Return the negative because GA maximizes by default
     }
     
     # Run the genetic algorithm to find the optimal weights
     ga_model <- ga(
-      type = "real-valued",  # We're optimizing real-valued parameters
+      type = "real-valued",
       fitness = function(params) fitness_function(params, X, y_true),
-      lower = rep(-1, ncol(X)),  # Lower bounds for weights
-      upper = rep(1, ncol(X)),   # Upper bounds for weights
-      popSize = 500,              # Population size
-      maxiter = 1000,             # Maximum number of generations
-      run = 50,                  # Stop after 50 generations without improvement
-      pmutation = 0.2            # Mutation probability
+      lower = rep(-1, ncol(X)),
+      upper = rep(1, ncol(X)),
+      popSize = 5000,
+      maxiter = 100000,
+      run = 50,
+      pmutation = 0.25
     )
     
     # Initialize the current state (last known values)
-    current_state <- as.numeric(result_df2[nrow(result_df2), c("opponentElo", "game_result_numeric","time_per_move","move_number","Score","game_number")])
+    current_state <- as.numeric(result_df2[nrow(result_df2), c("opponentElo", "game_result_numeric", "time_per_move", "move_number", "Score", "game_number", "year", "week", "month")])
     
     # Function to predict future Elo
     predict_future_elo <- function(current_state, weights, iterations) {
       predicted_elos <- numeric(iterations)
       
       for (i in 1:iterations) {
-        # Predict Elo for the current state
         predicted_elo <- sum(current_state * weights)
-        
-        # Store the predicted Elo
         predicted_elos[i] <- predicted_elo
         
-        # Update the current state for the next iteration
-        # Here you might adjust current_state based on your rules
-        # This is an example; adjust as needed based on your logic
         current_state[1] <- current_state[1] + rnorm(1, mean = 0, sd = 10)  # Simulate opponentElo change
         current_state[4] <- current_state[4] + 1  # Increment Move_Number.y
         current_state[6] <- current_state[6] + 1  # Increment GameNumber.y
-        # other updates based on your model logic...
       }
       
       return(predicted_elos)
     }
+    #browser()
     best_weights <- ga_model@solution
-    # Predict Elo 10 iterations into the future
     future_elos <- predict_future_elo(current_state, best_weights, 10)
     
+    # Extract best fitness values as a numeric vector
+    best_fitness_values <- ga_model@summary[, 1]  # Ensure this is a vector
     
+    # Create a data frame for plotting, transposing the vector to ensure it becomes a row
+    fitness_plot_data <- data.frame(
+      Iteration = 1:length(best_fitness_values),
+      BestFitness = t(best_fitness_values)  # Transpose to make it a row
+    )
+    
+
+    fitness_plot_data <- data.frame(
+      Iteration = 1:length(best_fitness_values),
+      BestFitness = best_fitness_values
+    )
+    
+    # Plotting the improvement of the GA with best fitness values
+    fitness_plot <- ggplot(data = fitness_plot_data, aes(x = Iteration, y = BestFitness)) +
+      geom_smooth(se = FALSE, color = "darkblue") +  # Trend line without standard error
+      labs(title = "GA Improvement Over Iterations (Best Fitness)",
+           x = "Iteration",
+           y = "Best Fitness (Negative MSE)") +
+      theme_minimal()
+    
+    
+    # Render the plot
+    output$forecastPlot <- renderPlot({
+      print(fitness_plot)
+    })
     
     output$forecastText <- renderPrint({
       print(future_elos)  # Print the predicted Elo ratings
     })
   })
+  
+
   
 
   
