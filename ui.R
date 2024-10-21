@@ -90,11 +90,11 @@ ui <- fluidPage(
                  actionButton("GetForecastBtn","Perform Elo Forecasting")
                ),
                mainPanel(
-                 plotOutput("forecastPlot"),   # Placeholder for forecast plot
+                 plotOutput("forecastPlot"),   #forecast plot
                  br(),# Add space
                  div(
                    h3("Elo Predictions"),
-                   textOutput("forecastText")    # Placeholder for forecast-related text output
+                   textOutput("forecastText")    #forecast-related text output
                  )
                )
              )

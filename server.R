@@ -351,9 +351,9 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
             mate_in = info['score'].relative.mate()
             if mate_in is not None:
                 if mate_in == 0:
-                    score = 10000  # Checkmate
+                    score = 100  # Checkmate
                 else:
-                    score = 10000 * (mate_in / abs(mate_in))
+                    score = 100 * (mate_in / abs(mate_in))
             else:
                 score = info['score'].relative.score() / 100  # Normalize centipawn score
             
@@ -431,7 +431,7 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       timepermove_player2 <- c()
       
       # Main processing loop
-      for (move in 1:(length(total_time) - 2)) {  # Adjust to length - 2 for index safety
+      for (move in 1:(length(total_time) - 2)) { 
         if (is.na(total_time[move]) || is.na(total_time[move + 2])) {
           next  # Skip this iteration if any timestamp is NA
         }
@@ -476,41 +476,68 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       )
     }))
     
+    # Define the path to the Stockfish engine executable
     stockfish_path <- "stockfish-windows-x86-64-avx2"
     
+    # Initialize an empty data frame for storing move and score information
     results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
+    
+    # Initialize an empty data frame for storing game results
     game_results_df <- data.frame()
     
+    # Loop through each game to analyze the moves
     for (i in 1:num_games_to_plot) {
+      # Concatenate all the moves of the current game into a single string
       moves_string <- paste(unlist(combined_data[[i]][["Move"]]), collapse = " ")
+      
+      # Analyze each move using the Stockfish engine and retrieve scores for each move
       aaresults <- py$analyze_each_move(moves_string, depth = engine_depth, stockfish_path = stockfish_path)
+      
+      # Convert the analysis results to a data frame
       current_game_df <- as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE)
+      
+      # Add a game ID column to the current game data
       current_game_df$game_id <- i
       
+      # Remove any duplicate rows from the current game's results
       unique_game_df <- current_game_df[!duplicated(current_game_df), ]
+      
+      # Append the results to the overall game results data frame
       game_results_df <- rbind(game_results_df, unique_game_df)
     }
     
+    # Rename the columns of the current game data frame to "Move" and "Score"
     names(current_game_df) <- c("Move", "Score")
+    
+    # Append the current game data frame to the results data frame
     results_df_scorea <- rbind(results_df_scorea, current_game_df)
+    
+    # Take a subset of `zzztest` based on the smaller number of rows between `zzztest` and `results_df_scorea`
     zzztest_subset <- zzztest[1:min(nrow(zzztest), nrow(results_df_scorea)), ]
+    
+    # Match the number of rows between `zzztest` and `results_df_scorea`
     results_df_scorea <- results_df_scorea[1:min(nrow(results_df_scorea), nrow(zzztest)), ]
     
+    # Combine `zzztest_subset` and `results_df_scorea` into a single data frame
     merged_data_complete <- cbind(zzztest_subset, results_df_scorea)
     
+    # Assign usernames based on the game number, alternating between black and white players
     usernames <- ifelse(seq_along(merged_data_complete$game_number) %% 2 == 1,
                         combined_df$black$username[merged_data_complete$game_number],
                         combined_df$white$username[merged_data_complete$game_number])
     
+    # Add the usernames to the merged data and convert the Score column to numeric
     merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors = FALSE), merged_data_complete)
     merged_data_complete2$Score <- as.numeric(merged_data_complete2$Score)
     
+    # Flip the sign of the scores for even moves (i.e., moves by Black)
     even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
     merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
-
-    merged_data_complete2(merged_data_complete)
+    
+    # Filter the data to only include rows where the username matches the input username
     merged_data_complete2 <- merged_data_complete2[merged_data_complete2$username == input$username, ]
     
+    # Plot 1: Time spent per move with a smoothed line
     output$TimePlotOutput <- renderPlot({
       ggplot(data = zzztest, aes(x = move_number, y = time_per_move, color = time_class)) +
         geom_smooth() +
@@ -519,6 +546,7 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
         theme_minimal()
     })
     
+    # Plot 2: Bubble plot showing move number, evaluation score, time spent, and players
     output$TimePlotOutput2 <- renderPlot({
       ggplot(merged_data_complete2, aes(x = move_number, y = Score, size = time_per_move, color = username)) +
         geom_point(alpha = 0.5) +
@@ -528,10 +556,12 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
         theme_minimal()
     })
     
+    # Data table: Display a table of move number, username, score, and time spent per move
     output$TimeTableOutput <- renderDataTable({
       table_data <- merged_data_complete2[, c("move_number", "username", "Score", "time_per_move")]
       datatable(table_data, options = list(pageLength = 10))
     })
+    
   })
   
   
