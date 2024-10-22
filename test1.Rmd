@@ -1496,12 +1496,34 @@ for (i in seq_along(combined_data)) {
       timepermove_player2 <- c(timepermove_player2, time_spent)  # Convert to tenths
     }
   }
-
-
-
-
-
-
-    
     ```
+    
+```{r}
+
+#install.packages(c('neuralnet','keras','tensorflow'),dependencies = T)
+library(neuralnet)
+
+set.seed(245)
+
+# Split the result_df into training and test datasets
+data_rows <- floor(0.80 * nrow(result_df))
+train_indices <- sample(c(1:nrow(result_df)), data_rows)
+
+# Use result_df for training and testing
+train_data <- result_df[train_indices, ]
+test_data <- result_df[-train_indices, ]
+
+# Build the neural network model
+model = neuralnet(
+    elo_change ~year + week + month,  # Ensure these columns exist in result_df
+    data = train_data,
+    hidden = c(4, 2),  # Hidden layer configuration
+    linear.output = FALSE
+)
+
+plot(model,rep = "best")
+
+
+
+```
     

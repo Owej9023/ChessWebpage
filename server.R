@@ -536,7 +536,7 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
     
     # Filter the data to only include rows where the username matches the input username
     merged_data_complete2 <- merged_data_complete2[merged_data_complete2$username == input$username, ]
-    
+    merged_data_complete2(merged_data_complete2)
     # Plot 1: Time spent per move with a smoothed line
     output$TimePlotOutput <- renderPlot({
       ggplot(data = zzztest, aes(x = move_number, y = time_per_move, color = time_class)) +
@@ -570,14 +570,13 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
     result_df <- result_df()
     merged_data_complete2 <- merged_data_complete2()
     merged_data_complete2 <- merged_data_complete2[, -ncol(merged_data_complete2)]
-    
+
     # First, merge result_df and merged_data_complete2
     result_df <- left_join(result_df, merged_data_complete2, by = "game_number")
     # Then slice the result_df to match the number of rows in merged_data_complete2
     result_df <- result_df %>%
       slice(1:nrow(merged_data_complete2))
     username <- input$username
-    
     # Apply all mutations in one pipeline
     result_df2 <- result_df %>%
       mutate(
@@ -649,7 +648,6 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       
       return(predicted_elos)
     }
-    #browser()
     best_weights <- ga_model@solution
     future_elos <- predict_future_elo(current_state, best_weights, 10)
     
@@ -676,7 +674,6 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
            y = "Best Fitness (Negative MSE)") +
       theme_minimal()
     
-    
     # Render the plot
     output$forecastPlot <- renderPlot({
       print(fitness_plot)
@@ -685,6 +682,39 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
     output$forecastText <- renderPrint({
       print(future_elos)  # Print the predicted Elo ratings
     })
+    
+    ######################UNDER CONSTRUCTION #######################################
+    
+    library(neuralnet)
+    
+    set.seed(245)
+    
+    # Split the result_df into training and test datasets
+    data_rows <- floor(0.80 * nrow(result_df2))
+    train_indices <- sample(c(1:nrow(result_df2)), data_rows)
+    
+    # Use result_df for training and testing
+    train_data <- result_df2[train_indices, ]
+    test_data <- result_df2[-train_indices, ]
+    browser()
+    # Build the neural network model
+    model = neuralnet(
+      current_elo ~game_result_numeric + opponentElo + Score + move_number +time_per_move +month +week +year,  # Ensure these columns exist in result_df
+      data = train_data,
+      hidden = c(4,2),  # Hidden layer configuration
+      linear.output = FALSE
+    )
+    
+    plot(model,rep = "best")
+    
+    pred <- predict(model, test_data)
+    
+    check = as.numeric(test_data$game_result_numeric) == max.col(pred)
+    accuracy = (sum(check)/nrow(test_data))*100
+    print(accuracy)
+    
+    browser()
+    
   })
   
 

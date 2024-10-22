@@ -23,6 +23,9 @@ source("Server_Logic_Chess.R")
 shinyApp(ui, server)
 
 #Currently In Progress fix whatever made it not work
+
+#When transitioning the data from merged_data_2 to Result_df2 it is turning all values of score into one value
+
 #fix the progress bar in time
 #fix smooth in the time so that it is only showing time spent by username (Identify player color and then filter out odd and even moves respectively)
 #bubble plot should be the change in evaluation and measure if player took a good move vs a bad move aka min score or max score 
