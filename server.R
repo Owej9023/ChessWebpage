@@ -601,16 +601,15 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
           TRUE ~ NA_real_                  # Handle unexpected cases
         )
       )
-    
+    #Score Still ok
     # Extract features (X) and target (y)
     result_df2$Score <- as.numeric(result_df2$Score)
-    result_df2$Score <- as.numeric(result_df2$year)
-    result_df2$Score <- as.numeric(result_df2$month)
-    result_df2$Score <- as.numeric(result_df2$week)
+    result_df2$year <- as.numeric(result_df2$year)
+    result_df2$month <- as.numeric(result_df2$month)
+    result_df2$week <- as.numeric(result_df2$week)
     
     X <- as.matrix(result_df2[, c("opponentElo", "game_result_numeric", "time_per_move", "move_number", "Score", "game_number", "year", "week", "month")])
     y_true <- result_df2$current_elo
-    
     # Define the fitness function (e.g., minimize MSE between predicted Elo and actual Elo)
     fitness_function <- function(params, X, y_true) {
       y_pred <- X %*% params
@@ -626,7 +625,7 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       upper = rep(1, ncol(X)),
       popSize = 5000,
       maxiter = 100000,
-      run = 50,
+      run = 10,
       pmutation = 0.25
     )
     
@@ -685,43 +684,126 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
     
     ######################UNDER CONSTRUCTION #######################################
     
-    library(neuralnet)
+    # Load necessary libraries
+    library(dplyr)
+    library(torch)
     
-    set.seed(245)
+    # Set the seed for reproducibility
+    torch_manual_seed(245)
     
-    # Split the result_df into training and test datasets
+    # Define the number of games into the future to predict
+    future_steps <- 5
+    
+    # Create a target variable shifted by the specified number of games
+    result_df2 <- result_df2 %>%
+      mutate(future_elo = lead(current_elo, n = future_steps)) %>%
+      drop_na()  # Remove rows with NA in the future_elo column due to shifting
+    
+    # Split the modified result_df into training and test datasets
     data_rows <- floor(0.80 * nrow(result_df2))
     train_indices <- sample(c(1:nrow(result_df2)), data_rows)
-    
-    # Use result_df for training and testing
     train_data <- result_df2[train_indices, ]
     test_data <- result_df2[-train_indices, ]
-    browser()
-    # Build the neural network model
-    model = neuralnet(
-      current_elo ~game_result_numeric + opponentElo + Score + move_number +time_per_move +month +week +year,  # Ensure these columns exist in result_df
-      data = train_data,
-      hidden = c(4,2),  # Hidden layer configuration
-      linear.output = FALSE
+    
+    # Create the train and test datasets with only the specified columns
+    train_data <- result_df2[train_indices, ] %>%
+      select(game_result_numeric, opponentElo, Score, move_number, time_per_move, month, week, year, current_elo,move_number,game_number) %>%
+      drop_na()
+    
+    test_data <- result_df2[-train_indices, ] %>%
+      select(game_result_numeric, opponentElo, Score, move_number, time_per_move, month, week, year, current_elo,move_number,game_number) %>%
+      drop_na()
+
+    # Separate features and target (future_elo) and remove any NA rows
+    train_x <- train_data %>% select(-current_elo) %>% drop_na() %>% as.matrix()
+    train_y <- train_data %>% pull(current_elo) %>% na.omit() %>% as.matrix()
+    
+    test_x <- test_data %>% select(-current_elo) %>% drop_na() %>% as.matrix()
+    test_y <- test_data %>% pull(current_elo) %>% na.omit() %>% as.matrix()
+    
+
+    # Convert data to torch tensors
+    train_x <- torch_tensor(train_x, dtype = torch_float())
+    train_y <- torch_tensor(train_y, dtype = torch_float())
+    test_x <- torch_tensor(test_x, dtype = torch_float())
+    test_y <- torch_tensor(test_y, dtype = torch_float())
+    
+    # Define the neural network model
+    net <- nn_module(
+      initialize = function() {
+        self$fc1 <- nn_linear(in_features = ncol(train_x), out_features = 8)
+        self$fc2 <- nn_linear(in_features = 8, out_features = 4)
+        self$output <- nn_linear(in_features = 4, out_features = 1)
+      },
+      forward = function(x) {
+        x %>% 
+          self$fc1() %>% 
+          nnf_relu() %>% 
+          self$fc2() %>% 
+          nnf_relu() %>% 
+          self$output()
+      }
     )
     
-    plot(model,rep = "best")
+    model <- net()
     
-    pred <- predict(model, test_data)
+    # Define the optimizer and loss function
+    optimizer <- optim_adam(model$parameters, lr = 0.01)
+    loss_fn <- nn_mse_loss()
     
-    check = as.numeric(test_data$game_result_numeric) == max.col(pred)
-    accuracy = (sum(check)/nrow(test_data))*100
-    print(accuracy)
+    # Train the model
+    num_epochs <- 100
+    for (epoch in 1:num_epochs) {
+      model$train()
+      optimizer$zero_grad()
+      output <- model(train_x)
+      loss <- loss_fn(output, train_y)
+      loss$backward()
+      optimizer$step()
+      
+      if (epoch %% 10 == 0) {
+        cat("Epoch:", epoch, "Loss:", loss$item(), "\n")
+      }
+    }
     
-    browser()
+    # Evaluate the model
+    # Evaluate the model
+    model$eval()
+    with_no_grad({
+      predictions <- model(test_x)
+      
+      # Calculate Mean Absolute Error (MAE)
+      mae <- mean(abs(as_array(predictions) - as_array(test_y)))
+      cat("Test MAE:", mae, "\n")
+      
+      # Calculate Root Mean Squared Error (RMSE)
+      rmse <- sqrt(mean((as_array(predictions) - as_array(test_y))^2))
+      cat("Test RMSE:", rmse, "\n")
+      
+      # Calculate R²
+      ss_res <- sum((as_array(predictions) - as_array(test_y))^2)
+      ss_tot <- sum((as_array(test_y) - mean(as_array(test_y)))^2)
+      r_squared <- 1 - (ss_res / ss_tot)
+      cat("Test R²:", r_squared, "\n")
+    })
     
-  })
+    # Display first few predictions alongside actual values for comparison
+    results <- data.frame(Predicted = as_array(predictions), Actual = as_array(test_y))
+    print(head(results))
+    
+    
+    # Display first few predictions alongside actual values for comparison
+    results <- data.frame(Predicted = as_array(predictions), Actual = as_array(test_y))
+    print(head(results))
+    
+    
   
-
-  
-
-  
+})
   
 }
+
+
+#python3.8 -m pip install tensorflow
+
 
   
