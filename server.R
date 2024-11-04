@@ -331,38 +331,43 @@ output$plotOutput5 <- renderPlotly({
   })
   
   observeEvent(input$GetTimeBtn, {
+    library(future.apply)
+    plan(multisession)  # Parallel processing
+    
     engine_depth <- as.integer(input$EngineDepth)
     py$engine_depth <- engine_depth
     
+    # Define the Python code with batch analysis capability
     py_run_string("
 import chess
 import chess.engine
-engine_depth = 1
-move_scores = []
+from multiprocessing import Pool
 
-def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/stockfish'):
+engine_depth = 1
+stockfish_path = '/path/to/stockfish'
+
+def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfish_path):
     with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
         board = chess.Board()
         moves = moves_str.split()
-        for move in moves:
+        results = []
+        
+        for idx, move in enumerate(moves):
             board.push_san(move)
-            info = engine.analyse(board, chess.engine.Limit(depth=depth))
+            # Adjust depth based on move number if needed
+            move_depth = min(depth, 8 if idx < 10 else depth)  # Example depth adjustment
+            info = engine.analyse(board, chess.engine.Limit(depth=move_depth))
             
             mate_in = info['score'].relative.mate()
             if mate_in is not None:
-                if mate_in == 0:
-                    score = 100  # Checkmate
-                else:
-                    score = 100 * (mate_in / abs(mate_in))
+                score = 100 if mate_in == 0 else 100 * (mate_in / abs(mate_in))
             else:
-                score = info['score'].relative.score() / 100  # Normalize centipawn score
-            
+                score = info['score'].relative.score() / 100  # Centipawn to score
             if board.turn == chess.BLACK:
                 score = -score
-            
-            move_scores.append((move, score))
-        return move_scores
-    ")
+            results.append((move, score))
+        return results
+")
     
     source("Server_Logic_Chess.R")
     
@@ -381,8 +386,6 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
     total_moves <- sum(sapply(filtered_data$pgn, function(pgn) {
       length(str_extract_all(pgn, "\\d+:\\d+(?:\\.\\d+)?")[[1]])
     }))
-    
-    ### Stockfish Analysis Section (Python Integration) ###
     
     pgn_list <- strsplit(filtered_data$pgn, "\n\n")
     all_moves <- vector("list", length(pgn_list))
@@ -415,53 +418,32 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       game_data$Move <- clean_moves(game_data$Move)
       game_data
     })
-
     
-    # Initialize result storage for each game
     all_timepermove_player1 <- list()
     all_timepermove_player2 <- list()
     
-    # Processing move times
     for (i in seq_along(combined_data)) {
       timestamps <- combined_data[[i]]$Timestamp
       total_time <- sapply(timestamps, convert_timestamp_to_seconds)
       
-      # Variables for time tracking for the current game
       timepermove_player1 <- c()
       timepermove_player2 <- c()
       
-      # Main processing loop
-      for (move in 1:(length(total_time) - 2)) { 
-        if (is.na(total_time[move]) || is.na(total_time[move + 2])) {
-          next  # Skip this iteration if any timestamp is NA
-        }
-        
-        # Calculate time spent
+      for (move in 1:(length(total_time) - 2)) {
         time_spent <- round(total_time[move] - total_time[move + 2], 2)
         
-        if (time_spent < 0) {
-          cat("Negative time detected for move:", move, 
-              "Time spent:", time_spent, 
-              "Player:", ifelse(move %% 2 == 1, "Player 1 (White)", "Player 2 (Black)"), 
-              "\n")
-        }
-        
         if (move %% 2 == 1) {
-          # Player 1 (White)
-          timepermove_player1 <- c(timepermove_player1, time_spent)  # Convert to tenths
+          timepermove_player1 <- c(timepermove_player1, time_spent)
         } else {
-          # Player 2 (Black)
-          timepermove_player2 <- c(timepermove_player2, time_spent)  # Convert to tenths
+          timepermove_player2 <- c(timepermove_player2, time_spent)
         }
       }
       
-      # Store results for this game
       all_timepermove_player1[[i]] <- timepermove_player1
       all_timepermove_player2[[i]] <- timepermove_player2
     }
     
-    # Combine time data into a single data frame
-    zzztest <- do.call(rbind, lapply(seq_along(all_timepermove_player1), function(list_num) {
+    zzztest <- do.call(rbind, future_lapply(seq_along(all_timepermove_player1), function(list_num) {
       player1_times <- all_timepermove_player1[[list_num]]
       player2_times <- all_timepermove_player2[[list_num]]
       
@@ -476,68 +458,68 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       )
     }))
     
-    # Define the path to the Stockfish engine executable
     stockfish_path <- "stockfish-windows-x86-64-avx2"
     
-    # Initialize an empty data frame for storing move and score information
     results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
-    
-    # Initialize an empty data frame for storing game results
     game_results_df <- data.frame()
     
-    # Loop through each game to analyze the moves
     for (i in 1:num_games_to_plot) {
-      # Concatenate all the moves of the current game into a single string
       moves_string <- paste(unlist(combined_data[[i]][["Move"]]), collapse = " ")
       
-      # Analyze each move using the Stockfish engine and retrieve scores for each move
-      aaresults <- py$analyze_each_move(moves_string, depth = engine_depth, stockfish_path = stockfish_path)
-      
-      # Convert the analysis results to a data frame
+      aaresults <- py$analyze_batch_of_moves(moves_string, depth = engine_depth, stockfish_path = stockfish_path)
       current_game_df <- as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE)
       
-      # Add a game ID column to the current game data
       current_game_df$game_id <- i
-      
-      # Remove any duplicate rows from the current game's results
       unique_game_df <- current_game_df[!duplicated(current_game_df), ]
-      
-      # Append the results to the overall game results data frame
       game_results_df <- rbind(game_results_df, unique_game_df)
+      
+      if (i %% 10 == 0) {  # Update progress bar every 5 games
+        progress$inc(10 / num_games_to_plot, detail = paste("Analyzing game", i, "of", num_games_to_plot))
+      }
     }
     
-    # Rename the columns of the current game data frame to "Move" and "Score"
     names(current_game_df) <- c("Move", "Score")
-    
-    # Append the current game data frame to the results data frame
     results_df_scorea <- rbind(results_df_scorea, current_game_df)
     
-    # Take a subset of `zzztest` based on the smaller number of rows between `zzztest` and `results_df_scorea`
-    zzztest_subset <- zzztest[1:min(nrow(zzztest), nrow(results_df_scorea)), ]
+    # Determine the number of rows in the selected number of games
+    num_rows_in_selected_games <- length(zzztest)
+    # Subset zzztest based on the minimum of its own rows and the rows in selected games
+    zzztest_subset <- zzztest[1:min(nrow(zzztest), num_rows_in_selected_games), ]
     
-    # Match the number of rows between `zzztest` and `results_df_scorea`
-    results_df_scorea <- results_df_scorea[1:min(nrow(results_df_scorea), nrow(zzztest)), ]
+    results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
     
-    # Combine `zzztest_subset` and `results_df_scorea` into a single data frame
-    merged_data_complete <- cbind(zzztest_subset, results_df_scorea)
+    for (i in 1:num_games_to_plot) {
+      moves_string <- paste(unlist(combined_data[[i]][["Move"]]), collapse = " ")
+      
+      aaresults <- py$analyze_batch_of_moves(moves_string, depth = engine_depth, stockfish_path = stockfish_path)
+      current_game_df <- as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE)
+      names(current_game_df) <- c("Move", "Score")
+      
+      # Append data from each game to results_df_scorea
+      results_df_scorea <- rbind(results_df_scorea, current_game_df)
+      
+      if (i %% 10 == 0) {  # Update progress bar every 10 games
+        progress$inc(10 / num_games_to_plot, detail = paste("Analyzing game", i, "of", num_games_to_plot))
+      }
+    }
     
-    # Assign usernames based on the game number, alternating between black and white players
+    # Now limit results_df_scorea to match the rows in zzztest
+    results_df_scorea <- results_df_scorea[1:nrow(zzztest), ]
+    
+    merged_data_complete <- cbind(zzztest, results_df_scorea)
     usernames <- ifelse(seq_along(merged_data_complete$game_number) %% 2 == 1,
                         combined_df$black$username[merged_data_complete$game_number],
                         combined_df$white$username[merged_data_complete$game_number])
     
-    # Add the usernames to the merged data and convert the Score column to numeric
     merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors = FALSE), merged_data_complete)
     merged_data_complete2$Score <- as.numeric(merged_data_complete2$Score)
     
-    # Flip the sign of the scores for even moves (i.e., moves by Black)
     even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
     merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
     
-    # Filter the data to only include rows where the username matches the input username
     merged_data_complete2 <- merged_data_complete2[merged_data_complete2$username == input$username, ]
     merged_data_complete2(merged_data_complete2)
-    # Plot 1: Time spent per move with a smoothed line
+    
     output$TimePlotOutput <- renderPlot({
       ggplot(data = zzztest, aes(x = move_number, y = time_per_move, color = time_class)) +
         geom_smooth() +
@@ -546,7 +528,6 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
         theme_minimal()
     })
     
-    # Plot 2: Bubble plot showing move number, evaluation score, time spent, and players
     output$TimePlotOutput2 <- renderPlot({
       ggplot(merged_data_complete2, aes(x = move_number, y = Score, size = time_per_move, color = username)) +
         geom_point(alpha = 0.5) +
@@ -556,21 +537,19 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
         theme_minimal()
     })
     
-    # Data table: Display a table of move number, username, score, and time spent per move
     output$TimeTableOutput <- renderDataTable({
       table_data <- merged_data_complete2[, c("move_number", "username", "Score", "time_per_move")]
       datatable(table_data, options = list(pageLength = 10))
     })
-    
+    #browser()
   })
-  
   
   observeEvent(input$GetForecastBtn, {
     
     result_df <- result_df()
     merged_data_complete2 <- merged_data_complete2()
-    merged_data_complete2 <- merged_data_complete2[, -ncol(merged_data_complete2)]
-
+    #merged_data_complete2 <- merged_data_complete2[, -ncol(merged_data_complete2)]
+    #browser()
     # First, merge result_df and merged_data_complete2
     result_df <- left_join(result_df, merged_data_complete2, by = "game_number")
     # Then slice the result_df to match the number of rows in merged_data_complete2
@@ -578,6 +557,7 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       slice(1:nrow(merged_data_complete2))
     username <- input$username
     # Apply all mutations in one pipeline
+    #browser()
     result_df2 <- result_df %>%
       mutate(
         current_elo = case_when(
@@ -599,16 +579,23 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
           Result == "0-1" ~ 0,             # User loses
           Result == "1/2-1/2" ~ 0.5,       # Draw
           TRUE ~ NA_real_                  # Handle unexpected cases
+        ),
+        game_type_numeric = case_when(
+          ChessGameType == "rapid" ~ 1,             # User wins
+          ChessGameType == "blitz" ~ 2,             # User loses
+          ChessGameType == "bullet" ~ 3,       # Draw
+          TRUE ~ NA_real_                  # Handle unexpected cases
         )
       )
     #Score Still ok
+    browser()
     # Extract features (X) and target (y)
     result_df2$Score <- as.numeric(result_df2$Score)
     result_df2$year <- as.numeric(result_df2$year)
     result_df2$month <- as.numeric(result_df2$month)
     result_df2$week <- as.numeric(result_df2$week)
-    
-    X <- as.matrix(result_df2[, c("opponentElo", "game_result_numeric", "time_per_move", "move_number", "Score", "game_number", "year", "week", "month")])
+    #browser()
+    X <- as.matrix(result_df2[, c("opponentElo", "game_type_numeric","game_result_numeric", "time_per_move", "move_number", "Score", "game_number", "year", "week", "month")])
     y_true <- result_df2$current_elo
     # Define the fitness function (e.g., minimize MSE between predicted Elo and actual Elo)
     fitness_function <- function(params, X, y_true) {
@@ -616,6 +603,173 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
       mse <- mean((y_true - y_pred)^2)
       return(-mse)  # Return the negative because GA maximizes by default
     }
+    browser()
+    
+    ######################UNDER CONSTRUCTION #######################################
+    
+    # Load necessary libraries
+    library(dplyr)
+    library(torch)
+    
+    # Set the seed for reproducibility
+    torch_manual_seed(245)
+    
+    # Define the number of games into the future to predict
+    future_steps <- 5
+    
+    # Create a target variable shifted by the specified number of games within each game_number
+    result_df2 <- result_df2 %>%
+      group_by(game_number) %>%
+      ungroup() %>%
+      drop_na()  # Remove rows with NA in the future_elo column due to shifting
+    
+    # Split the modified result_df into training and test datasets
+    data_rows <- floor(0.80 * nrow(result_df2))
+    train_indices <- sample(c(1:nrow(result_df2)), data_rows)
+    train_data <- result_df2[train_indices, ]
+    test_data <- result_df2[-train_indices, ]
+    
+    # Create the train and test datasets with only the specified columns
+    train_data <- result_df2[train_indices, ] %>%
+      select(game_result_numeric, game_type_numeric, opponentElo, Score, move_number, time_per_move, month, week, year, current_elo, move_number, game_number) %>%
+      drop_na()
+    
+    test_data <- result_df2[-train_indices, ] %>%
+      select(game_result_numeric, game_type_numeric, opponentElo, Score, move_number, time_per_move, month, week, year, current_elo, move_number, game_number) %>%
+      drop_na()
+    
+    # Separate features and target (future_elo) and remove any NA rows
+    train_x <- train_data %>% select(-current_elo) %>% drop_na() %>% as.matrix()
+    train_y <- train_data %>% pull(current_elo) %>% na.omit() %>% as.matrix()
+    
+    test_x <- test_data %>% select(-current_elo) %>% drop_na() %>% as.matrix()
+    test_y <- test_data %>% pull(current_elo) %>% na.omit() %>% as.matrix()
+    
+    # Convert data to torch tensors
+    train_x <- torch_tensor(train_x, dtype = torch_float())
+    train_y <- torch_tensor(train_y, dtype = torch_float())
+    test_x <- torch_tensor(test_x, dtype = torch_float())
+    test_y <- torch_tensor(test_y, dtype = torch_float())
+    
+    #browser()
+    
+    # Define the neural network model
+    net <- nn_module(
+      initialize = function() {
+        self$fc1 <- nn_linear(in_features = ncol(train_x), out_features = 64)
+        self$fc2 <- nn_linear(in_features = 64, out_features = 32)
+        self$fc3 <- nn_linear(in_features = 32, out_features = 16)
+        self$fc4 <- nn_linear(in_features = 16, out_features = 8)
+        self$output <- nn_linear(in_features = 8, out_features = 1)
+        self$dropout <- nn_dropout(p = 0.2)
+      },
+      forward = function(x) {
+        x %>%
+          self$fc1() %>%
+          nnf_relu() %>%
+          self$fc2() %>%
+          nnf_relu() %>%
+          self$fc3() %>%
+          nnf_relu() %>%
+          self$fc4() %>%
+          nnf_relu() %>%
+          self$output()
+      }
+    )
+    
+    model <- net()
+    
+    # Define the optimizer and loss function
+    optimizer <- optim_adam(model$parameters, lr = 0.01)
+    loss_fn <- nn_mse_loss()
+    
+    # Train the model
+    num_epochs <- 100
+    for (epoch in 1:num_epochs) {
+      model$train()
+      optimizer$zero_grad()
+      output <- model(train_x)
+      loss <- loss_fn(output, train_y)
+      loss$backward()
+      optimizer$step()
+      
+      if (epoch %% 10 == 0) {
+        cat("Epoch:", epoch, "Loss:", loss$item(), "\n")
+      }
+    }
+    
+    # Evaluate the model with condition on game number
+    model$eval()
+    last_game_number <- NULL  # Initialize a variable to store the last game number
+    
+    # Extract game numbers from test_data
+    test_game_numbers <- test_data$game_number
+    
+    with_no_grad({
+      predictions <- vector("list", nrow(test_x))  # Preallocate list for predictions
+      
+      for (i in 1:nrow(test_x)) {
+        current_game_number <- test_game_numbers[i]  # Get the current game number from test_data
+        
+        # Check if the current game number is different from the last one
+        if (!identical(current_game_number, last_game_number)) {
+          prediction <- model(test_x[i, , drop = FALSE])  # Make prediction
+          predictions[[i]] <- as_array(prediction)  # Store prediction
+          
+          # Update last game number
+          last_game_number <- current_game_number
+        } else {
+          # Copy the previous prediction for consistency within the game
+          predictions[[i]] <- predictions[[i - 1]]
+        }
+      }
+      
+      # Convert list of predictions to a tensor for evaluation
+      predictions <- torch_tensor(unlist(predictions), dtype = torch_float())
+      
+      # Calculate Mean Absolute Error (MAE)
+      mae <- mean(abs(predictions - test_y))
+      cat("Test MAE:", mae$item(), "\n")
+      
+      # Calculate Root Mean Squared Error (RMSE)
+      rmse <- sqrt(mean((predictions - test_y)^2))
+      cat("Test RMSE:", rmse$item(), "\n")
+      
+      # Calculate R²
+      ss_res <- sum((predictions - test_y)^2)
+      ss_tot <- sum((test_y - mean(test_y))^2)
+      r_squared <- 1 - (ss_res / ss_tot)
+      cat("Test R²:", r_squared$item(), "\n")
+    })
+    
+    # Convert the tensors to R vectors
+    predictions_vector <- as_array(predictions)
+    test_y_vector <- as_array(test_y)
+    game_numbers_vector <- test_data$game_number  # Extract game numbers for the test set
+    
+    # Create a results data frame including game numbers
+    results <- data.frame(Game_Number = game_numbers_vector, 
+                          Predicted = predictions_vector, 
+                          Actual = test_y_vector)
+    
+    # Remove duplicates, keeping only the first occurrence per game_number
+    unique_results <- results %>%
+      group_by(Game_Number) %>%
+      summarize(Predicted = first(Predicted), 
+                Actual = first(Actual), 
+                .groups = 'drop')  # Drop grouping after summarization
+    
+    # Print the unique results
+    print(unique_results)
+    
+    ########################################################
+    
+    
+    
+    
+    
+    
+    
     
     # Run the genetic algorithm to find the optimal weights
     ga_model <- ga(
@@ -630,7 +784,7 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
     )
     
     # Initialize the current state (last known values)
-    current_state <- as.numeric(result_df2[nrow(result_df2), c("opponentElo", "game_result_numeric", "time_per_move", "move_number", "Score", "game_number", "year", "week", "month")])
+    current_state <- as.numeric(result_df2[nrow(result_df2), c("opponentElo", "game_result_numeric","game_type_numeric", "time_per_move", "move_number", "Score", "game_number", "year", "week", "month")])
     
     # Function to predict future Elo
     predict_future_elo <- function(current_state, weights, iterations) {
@@ -681,121 +835,6 @@ def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/st
     output$forecastText <- renderPrint({
       print(future_elos)  # Print the predicted Elo ratings
     })
-    
-    ######################UNDER CONSTRUCTION #######################################
-    
-    # Load necessary libraries
-    library(dplyr)
-    library(torch)
-    
-    # Set the seed for reproducibility
-    torch_manual_seed(245)
-    
-    # Define the number of games into the future to predict
-    future_steps <- 5
-    
-    # Create a target variable shifted by the specified number of games
-    result_df2 <- result_df2 %>%
-      mutate(future_elo = lead(current_elo, n = future_steps)) %>%
-      drop_na()  # Remove rows with NA in the future_elo column due to shifting
-    
-    # Split the modified result_df into training and test datasets
-    data_rows <- floor(0.80 * nrow(result_df2))
-    train_indices <- sample(c(1:nrow(result_df2)), data_rows)
-    train_data <- result_df2[train_indices, ]
-    test_data <- result_df2[-train_indices, ]
-    
-    # Create the train and test datasets with only the specified columns
-    train_data <- result_df2[train_indices, ] %>%
-      select(game_result_numeric, opponentElo, Score, move_number, time_per_move, month, week, year, current_elo,move_number,game_number) %>%
-      drop_na()
-    
-    test_data <- result_df2[-train_indices, ] %>%
-      select(game_result_numeric, opponentElo, Score, move_number, time_per_move, month, week, year, current_elo,move_number,game_number) %>%
-      drop_na()
-
-    # Separate features and target (future_elo) and remove any NA rows
-    train_x <- train_data %>% select(-current_elo) %>% drop_na() %>% as.matrix()
-    train_y <- train_data %>% pull(current_elo) %>% na.omit() %>% as.matrix()
-    
-    test_x <- test_data %>% select(-current_elo) %>% drop_na() %>% as.matrix()
-    test_y <- test_data %>% pull(current_elo) %>% na.omit() %>% as.matrix()
-    
-
-    # Convert data to torch tensors
-    train_x <- torch_tensor(train_x, dtype = torch_float())
-    train_y <- torch_tensor(train_y, dtype = torch_float())
-    test_x <- torch_tensor(test_x, dtype = torch_float())
-    test_y <- torch_tensor(test_y, dtype = torch_float())
-    
-    # Define the neural network model
-    net <- nn_module(
-      initialize = function() {
-        self$fc1 <- nn_linear(in_features = ncol(train_x), out_features = 8)
-        self$fc2 <- nn_linear(in_features = 8, out_features = 4)
-        self$output <- nn_linear(in_features = 4, out_features = 1)
-      },
-      forward = function(x) {
-        x %>% 
-          self$fc1() %>% 
-          nnf_relu() %>% 
-          self$fc2() %>% 
-          nnf_relu() %>% 
-          self$output()
-      }
-    )
-    
-    model <- net()
-    
-    # Define the optimizer and loss function
-    optimizer <- optim_adam(model$parameters, lr = 0.01)
-    loss_fn <- nn_mse_loss()
-    
-    # Train the model
-    num_epochs <- 100
-    for (epoch in 1:num_epochs) {
-      model$train()
-      optimizer$zero_grad()
-      output <- model(train_x)
-      loss <- loss_fn(output, train_y)
-      loss$backward()
-      optimizer$step()
-      
-      if (epoch %% 10 == 0) {
-        cat("Epoch:", epoch, "Loss:", loss$item(), "\n")
-      }
-    }
-    
-    # Evaluate the model
-    # Evaluate the model
-    model$eval()
-    with_no_grad({
-      predictions <- model(test_x)
-      
-      # Calculate Mean Absolute Error (MAE)
-      mae <- mean(abs(as_array(predictions) - as_array(test_y)))
-      cat("Test MAE:", mae, "\n")
-      
-      # Calculate Root Mean Squared Error (RMSE)
-      rmse <- sqrt(mean((as_array(predictions) - as_array(test_y))^2))
-      cat("Test RMSE:", rmse, "\n")
-      
-      # Calculate R²
-      ss_res <- sum((as_array(predictions) - as_array(test_y))^2)
-      ss_tot <- sum((as_array(test_y) - mean(as_array(test_y)))^2)
-      r_squared <- 1 - (ss_res / ss_tot)
-      cat("Test R²:", r_squared, "\n")
-    })
-    
-    # Display first few predictions alongside actual values for comparison
-    results <- data.frame(Predicted = as_array(predictions), Actual = as_array(test_y))
-    print(head(results))
-    
-    
-    # Display first few predictions alongside actual values for comparison
-    results <- data.frame(Predicted = as_array(predictions), Actual = as_array(test_y))
-    print(head(results))
-    
     
   
 })

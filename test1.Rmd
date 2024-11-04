@@ -1530,17 +1530,296 @@ plot(model,rep = "best")
 
 ```{r}
 
+install.packages(c('neuralnet','keras','tensorflow'),dependencies = T)
 
-#library(keras)
+library(tidyverse)
+library(neuralnet)
+iris <- iris %>% mutate_if(is.character, as.factor)
 
-#install_keras()
+set.seed(245)
+data_rows <- floor(0.80 * nrow(iris))
+train_indices <- sample(c(1:nrow(iris)), data_rows)
+train_data <- iris[train_indices,]
+test_data <- iris[-train_indices,]
+
+model = neuralnet(
+    Species~Sepal.Length+Sepal.Width+Petal.Length+Petal.Width,
+data=train_data,
+hidden=c(4,2),
+linear.output = FALSE
+)
+
+plot(model,rep = "best")
 
 
-library(keras)
-mnist <- dataset_mnist()
-x_train <- mnist$train$x
-y_train <- mnist$train$y
-x_test <- mnist$test$x
-y_test <- mnist$test$y
+pred <- predict(model, test_data)
+labels <- c("setosa", "versicolor", "virginca")
+prediction_label <- data.frame(max.col(pred)) %>%     
+mutate(pred=labels[max.col.pred.]) %>%
+select(2) %>%
+unlist()
+
+table(test_data$Species, prediction_label)
+
+check = as.numeric(test_data$Species) == max.col(pred)
+accuracy = (sum(check)/nrow(test_data))*100
+print(accuracy)
+
+
+```
+
+
+```{r}
+convert_timestamp_to_seconds <- function(timestamp) {
+  # Split by colon and dot
+  parts <- unlist(strsplit(timestamp, "[:.]"))
+  
+  # Check if the timestamp includes tenths of a second
+  hours <- as.numeric(parts[1])
+  minutes <- as.numeric(parts[2])
+  seconds <- as.numeric(parts[3])
+  
+  # Tenths will be NA if not present in the timestamp
+  tenths <- ifelse(length(parts) == 4, as.numeric(parts[4]) / 10, 0)
+  
+  # Calculate total seconds
+  total_seconds <- (hours * 3600) + (minutes * 60) + seconds + tenths
+  return(total_seconds)
+}
+
+
+engine_depth <- as.integer(5)
+    py$engine_depth <- engine_depth
+    
+    py_run_string("
+import chess
+import chess.engine
+engine_depth = 1
+move_scores = []
+
+def analyze_each_move(moves_str, depth=engine_depth, stockfish_path='/path/to/stockfish'):
+    with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
+        board = chess.Board()
+        moves = moves_str.split()
+        for move in moves:
+            board.push_san(move)
+            info = engine.analyse(board, chess.engine.Limit(depth=depth))
+            
+            mate_in = info['score'].relative.mate()
+            if mate_in is not None:
+                if mate_in == 0:
+                    score = 100  # Checkmate
+                else:
+                    score = 100 * (mate_in / abs(mate_in))
+            else:
+                score = info['score'].relative.score() / 100  # Normalize centipawn score
+            
+            if board.turn == chess.BLACK:
+                score = -score
+            
+            move_scores.append((move, score))
+        return move_scores
+    ")
+    
+    num_games_to_plot <- 10000
+    
+    filtered_data <- combined_df %>%
+      filter(games$rules == "chess", games$rated == TRUE) %>%
+      tail(num_games_to_plot)
+    
+    total_moves <- sum(sapply(filtered_data$games$pgn, function(pgn) {
+      length(str_extract_all(pgn, "\\d+:\\d+(?:\\.\\d+)?")[[1]])
+    }))
+    
+    ### Stockfish Analysis Section (Python Integration) ###
+    
+    pgn_list <- strsplit(filtered_data$games$pgn, "\n\n")
+    all_moves <- vector("list", length(pgn_list))
+    all_timestamps <- vector("list", length(pgn_list))
+    
+    for (i in seq_along(pgn_list)) {
+      game_pgn <- pgn_list[[i]]
+      temp_aa <- extract_moves_and_timestamps(game_pgn)
+      temp_aa <- separate_moves_and_timestamps(temp_aa)
+      all_moves[[i]] <- temp_aa$moves
+      all_timestamps[[i]] <- temp_aa$timestamps
+    }
+
+    combined_data <- vector("list", length(all_moves))
+        
+    for (i in seq_along(all_moves)) {
+  moves <- all_moves[[i]]
+  timestamps <- all_timestamps[[i]]
+  
+  if (is.null(moves) || is.null(timestamps) || length(moves) == 0 || length(timestamps) == 0) {
+    message("Skipping game ", i, ": moves or timestamps are NULL or empty.")
+    next
+  }
+
+  # Define min_length and clean timestamps before creating game_data
+  min_length <- min(length(moves), length(timestamps))
+  
+  # Check if clean_timestamp throws an error
+  cleaned_timestamps <- tryCatch({
+      clean_timestamp(timestamps[1:min_length])
+    },
+    error = function(e) {
+      message("clean_timestamp error for game ", i, ": ", e$message)
+      return(rep(NA, min_length))  # Placeholder if cleaning fails
+    }
+  )
+  
+  # Create the data frame and add it to combined_data
+  print(i)
+  
+  game_data <- data.frame(
+    Move = moves[1:min_length],
+    Timestamp = cleaned_timestamps,
+    stringsAsFactors = FALSE
+  )
+  combined_data[[i]] <- game_data
+}
+
+
+    
+    combined_data <- lapply(combined_data, function(game_data) {
+      game_data$Move <- clean_moves(game_data$Move)
+      game_data
+    })
+
+    
+   # Initialize result storage for each game
+all_timepermove_player1 <- list()
+all_timepermove_player2 <- list()
+
+# Processing move times
+for (i in seq_along(combined_data)) {
+  timestamps <- combined_data[[i]]$Timestamp
+  
+  # Skip games with less than 4 moves
+  if (length(timestamps) < 4) {
+    message("Skipping game ", i, " due to less than 4 moves")
+    next
+  }
+  
+  total_time <- sapply(timestamps, convert_timestamp_to_seconds)
+  
+  # Variables for time tracking for the current game
+  timepermove_player1 <- c()
+  timepermove_player2 <- c()
+  
+  # Main processing loop
+  for (move in 1:(length(total_time) - 2)) {
+    # Check for NA values before performing calculations
+    if (is.na(total_time[move]) || is.na(total_time[move + 2])) {
+      message("Skipping move ", move, " in game ", i, " due to NA timestamp")
+      next  # Skip this iteration if any timestamp is NA
+    }
+    
+    # Calculate time spent
+    time_spent <- round(total_time[move] - total_time[move + 2], 2)
+    
+    # Handle negative time values if necessary
+    if (time_spent < 0) {
+      cat("Negative time detected for move:", move, 
+          "Time spent:", time_spent, 
+          "Player:", ifelse(move %% 2 == 1, "Player 1 (White)", "Player 2 (Black)"), 
+          "\n")
+    }
+    
+    # Append time spent to the appropriate player list
+    if (move %% 2 == 1) {
+      # Player 1 (White)
+      timepermove_player1 <- c(timepermove_player1, time_spent)
+    } else {
+      # Player 2 (Black)
+      timepermove_player2 <- c(timepermove_player2, time_spent)
+    }
+  }
+  
+  # Store results for this game
+  all_timepermove_player1[[i]] <- timepermove_player1
+  all_timepermove_player2[[i]] <- timepermove_player2
+}
+
+    # Combine time data into a single data frame
+    zzztest <- do.call(rbind, lapply(seq_along(all_timepermove_player1), function(list_num) {
+      player1_times <- all_timepermove_player1[[list_num]]
+      player2_times <- all_timepermove_player2[[list_num]]
+      
+      combined_times <- c(player1_times, player2_times)
+      move_nums <- seq_along(combined_times)
+      
+      data.frame(
+        time_per_move = combined_times,
+        move_number = move_nums,
+        game_number = list_num,
+        time_class = rep(filtered_data$games$time_class[list_num], length(combined_times))
+      )
+    }))
+    
+    # Define the path to the Stockfish engine executable
+    stockfish_path <- "stockfish-windows-x86-64-avx2"
+    
+    # Initialize an empty data frame for storing move and score information
+    results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
+    
+    # Initialize an empty data frame for storing game results
+    game_results_df <- data.frame()
+    
+    # Loop through each game to analyze the moves
+    for (i in 1:num_games_to_plot) {
+      # Concatenate all the moves of the current game into a single string
+      moves_string <- paste(unlist(combined_data[[i]][["Move"]]), collapse = " ")
+      
+      # Analyze each move using the Stockfish engine and retrieve scores for each move
+      aaresults <- py$analyze_each_move(moves_string, depth = engine_depth, stockfish_path = stockfish_path)
+      
+      # Convert the analysis results to a data frame
+      current_game_df <- as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE)
+      
+      # Add a game ID column to the current game data
+      current_game_df$game_id <- i
+      
+      # Remove any duplicate rows from the current game's results
+      unique_game_df <- current_game_df[!duplicated(current_game_df), ]
+      
+      # Append the results to the overall game results data frame
+      game_results_df <- rbind(game_results_df, unique_game_df)
+    }
+    
+    # Rename the columns of the current game data frame to "Move" and "Score"
+    names(current_game_df) <- c("Move", "Score")
+    
+    # Append the current game data frame to the results data frame
+    results_df_scorea <- rbind(results_df_scorea, current_game_df)
+    
+    # Take a subset of `zzztest` based on the smaller number of rows between `zzztest` and `results_df_scorea`
+    zzztest_subset <- zzztest[1:min(nrow(zzztest), nrow(results_df_scorea)), ]
+    
+    # Match the number of rows between `zzztest` and `results_df_scorea`
+    results_df_scorea <- results_df_scorea[1:min(nrow(results_df_scorea), nrow(zzztest)), ]
+    
+    # Combine `zzztest_subset` and `results_df_scorea` into a single data frame
+    merged_data_complete <- cbind(zzztest_subset, results_df_scorea)
+    
+    # Assign usernames based on the game number, alternating between black and white players
+    usernames <- ifelse(seq_along(merged_data_complete$game_number) %% 2 == 1,
+                        combined_df$black$username[merged_data_complete$game_number],
+                        combined_df$white$username[merged_data_complete$game_number])
+    
+    # Add the usernames to the merged data and convert the Score column to numeric
+    merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors = FALSE), merged_data_complete)
+    merged_data_complete2$Score <- as.numeric(merged_data_complete2$Score)
+    
+    # Flip the sign of the scores for even moves (i.e., moves by Black)
+    even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
+    merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
+    
+    # Filter the data to only include rows where the username matches the input username
+    merged_data_complete2 <- merged_data_complete2[merged_data_complete2$username == input$username, ]
+    merged_data_complete2(merged_data_complete2)
+
+    
 ```
     
