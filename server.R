@@ -630,20 +630,19 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
     test_data <- result_df2[-train_indices, ]
     
     # Create the train and test datasets with only the specified columns
-    train_data <- result_df2[train_indices, ] %>%
+    train_data <- train_data %>%
       select(game_result_numeric, game_type_numeric, opponentElo, Score, move_number, time_per_move, month, week, year, current_elo, move_number, game_number) %>%
       drop_na()
     
-    test_data <- result_df2[-train_indices, ] %>%
+    test_data <- test_data %>%
       select(game_result_numeric, game_type_numeric, opponentElo, Score, move_number, time_per_move, month, week, year, current_elo, move_number, game_number) %>%
       drop_na()
     
-    # Separate features and target (future_elo) and remove any NA rows
-    train_x <- train_data %>% select(-current_elo) %>% drop_na() %>% as.matrix()
-    train_y <- train_data %>% pull(current_elo) %>% na.omit() %>% as.matrix()
-    
-    test_x <- test_data %>% select(-current_elo) %>% drop_na() %>% as.matrix()
-    test_y <- test_data %>% pull(current_elo) %>% na.omit() %>% as.matrix()
+    # Prepare feature and target variables without scaling
+    train_x <- train_data %>% select(-current_elo) %>% as.matrix()
+    train_y <- train_data %>% pull(current_elo) %>% as.matrix()
+    test_x <- test_data %>% select(-current_elo) %>% as.matrix()
+    test_y <- test_data %>% pull(current_elo) %>% as.matrix()
     
     # Convert data to torch tensors
     train_x <- torch_tensor(train_x, dtype = torch_float())
@@ -651,17 +650,15 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
     test_x <- torch_tensor(test_x, dtype = torch_float())
     test_y <- torch_tensor(test_y, dtype = torch_float())
     
-    #browser()
-    
     # Define the neural network model
     net <- nn_module(
       initialize = function() {
-        self$fc1 <- nn_linear(in_features = ncol(train_x), out_features = 64)
-        self$fc2 <- nn_linear(in_features = 64, out_features = 32)
-        self$fc3 <- nn_linear(in_features = 32, out_features = 16)
-        self$fc4 <- nn_linear(in_features = 16, out_features = 8)
+        self$fc1 <- nn_linear(in_features = ncol(train_x), out_features = 128)
+        self$fc2 <- nn_linear(in_features = 128, out_features = 64)
+        self$fc3 <- nn_linear(in_features = 64, out_features = 32)
+        self$fc4 <- nn_linear(in_features = 32, out_features = 16)
+        self$fc5 <- nn_linear(in_features = 16, out_features = 8)
         self$output <- nn_linear(in_features = 8, out_features = 1)
-        self$dropout <- nn_dropout(p = 0.2)
       },
       forward = function(x) {
         x %>%
@@ -673,6 +670,8 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
           nnf_relu() %>%
           self$fc4() %>%
           nnf_relu() %>%
+          self$fc5() %>%
+          nnf_relu() %>%
           self$output()
       }
     )
@@ -680,77 +679,101 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
     model <- net()
     
     # Define the optimizer and loss function
-    optimizer <- optim_adam(model$parameters, lr = 0.01)
+    optimizer <- optim_adam(model$parameters, lr = 0.001)
     loss_fn <- nn_mse_loss()
     
-    # Train the model
-    num_epochs <- 100
+    # Training loop
+    batch_size <- 32
+    num_batches <- ceiling(nrow(train_x) / batch_size)
+    num_epochs <- 200
+    
     for (epoch in 1:num_epochs) {
       model$train()
-      optimizer$zero_grad()
-      output <- model(train_x)
-      loss <- loss_fn(output, train_y)
-      loss$backward()
-      optimizer$step()
+      epoch_loss <- 0
+      
+      for (i in 1:num_batches) {
+        batch_indices <- ((i - 1) * batch_size + 1):(min(i * batch_size, nrow(train_x)))
+        batch_x <- train_x[batch_indices, , drop = FALSE]
+        batch_y <- train_y[batch_indices, , drop = FALSE]
+        
+        optimizer$zero_grad()
+        output <- model(batch_x)
+        loss <- loss_fn(output, batch_y)
+        loss$backward()
+        
+        nn_utils_clip_grad_norm_(model$parameters, max_norm = 1.0)
+        optimizer$step()
+        epoch_loss <- epoch_loss + loss$item()
+      }
       
       if (epoch %% 10 == 0) {
-        cat("Epoch:", epoch, "Loss:", loss$item(), "\n")
+        cat("Epoch:", epoch, "Loss:", epoch_loss / num_batches, "\n")
       }
     }
     
-    # Evaluate the model with condition on game number
+    # Evaluation and results code remains the same as before
+    
+    # Evaluation mode
     model$eval()
-    last_game_number <- NULL  # Initialize a variable to store the last game number
     
     # Extract game numbers from test_data
     test_game_numbers <- test_data$game_number
+    
+    # Initialize last_game_number to ensure predictions are made only when game number changes
+    last_game_number <- NULL  
     
     with_no_grad({
       predictions <- vector("list", nrow(test_x))  # Preallocate list for predictions
       
       for (i in 1:nrow(test_x)) {
-        current_game_number <- test_game_numbers[i]  # Get the current game number from test_data
+        current_game_number <- test_game_numbers[i]
         
-        # Check if the current game number is different from the last one
+        # Make prediction if the game number is different from the last one
         if (!identical(current_game_number, last_game_number)) {
-          prediction <- model(test_x[i, , drop = FALSE])  # Make prediction
-          predictions[[i]] <- as_array(prediction)  # Store prediction
+          prediction <- model(test_x[i, , drop = FALSE])
+          predictions[[i]] <- as_array(prediction)
           
           # Update last game number
           last_game_number <- current_game_number
         } else {
-          # Copy the previous prediction for consistency within the game
+          # Use previous prediction within the same game
           predictions[[i]] <- predictions[[i - 1]]
         }
       }
       
-      # Convert list of predictions to a tensor for evaluation
+      # Convert list of predictions to a tensor
       predictions <- torch_tensor(unlist(predictions), dtype = torch_float())
       
-      # Calculate Mean Absolute Error (MAE)
-      mae <- mean(abs(predictions - test_y))
-      cat("Test MAE:", mae$item(), "\n")
+      # Calculate evaluation metrics
+      actual_values <- as_array(test_y)
+      predicted_values <- as_array(predictions)
       
-      # Calculate Root Mean Squared Error (RMSE)
-      rmse <- sqrt(mean((predictions - test_y)^2))
-      cat("Test RMSE:", rmse$item(), "\n")
+      # Mean Absolute Error (MAE)
+      mae <- mean(abs(predicted_values - actual_values))
+      cat("Test MAE:", mae, "\n")
       
-      # Calculate R²
-      ss_res <- sum((predictions - test_y)^2)
-      ss_tot <- sum((test_y - mean(test_y))^2)
+      # Root Mean Squared Error (RMSE)
+      rmse <- sqrt(mean((predicted_values - actual_values)^2))
+      cat("Test RMSE:", rmse, "\n")
+      
+      # R-squared (R²)
+      ss_res <- sum((predicted_values - actual_values)^2)
+      ss_tot <- sum((actual_values - mean(actual_values))^2)
       r_squared <- 1 - (ss_res / ss_tot)
-      cat("Test R²:", r_squared$item(), "\n")
+      cat("Test R²:", r_squared, "\n")
     })
     
-    # Convert the tensors to R vectors
-    predictions_vector <- as_array(predictions)
-    test_y_vector <- as_array(test_y)
-    game_numbers_vector <- test_data$game_number  # Extract game numbers for the test set
+    # Convert predictions and actual values to vectors for further analysis
+    predictions_vector <- as.vector(predicted_values)
+    actual_values_vector <- as.vector(actual_values)
+    game_numbers_vector <- test_data$game_number
     
     # Create a results data frame including game numbers
-    results <- data.frame(Game_Number = game_numbers_vector, 
-                          Predicted = predictions_vector, 
-                          Actual = test_y_vector)
+    results <- data.frame(
+      Game_Number = game_numbers_vector, 
+      Predicted = predictions_vector, 
+      Actual = actual_values_vector
+    )
     
     # Remove duplicates, keeping only the first occurrence per game_number
     unique_results <- results %>%
@@ -759,7 +782,7 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
                 Actual = first(Actual), 
                 .groups = 'drop')  # Drop grouping after summarization
     
-    # Print the unique results
+    # Print the unique results for review
     print(unique_results)
     
     ########################################################
@@ -770,71 +793,6 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
     
     
     
-    
-    # Run the genetic algorithm to find the optimal weights
-    ga_model <- ga(
-      type = "real-valued",
-      fitness = function(params) fitness_function(params, X, y_true),
-      lower = rep(-1, ncol(X)),
-      upper = rep(1, ncol(X)),
-      popSize = 5000,
-      maxiter = 100000,
-      run = 10,
-      pmutation = 0.25
-    )
-    
-    # Initialize the current state (last known values)
-    current_state <- as.numeric(result_df2[nrow(result_df2), c("opponentElo", "game_result_numeric","game_type_numeric", "time_per_move", "move_number", "Score", "game_number", "year", "week", "month")])
-    
-    # Function to predict future Elo
-    predict_future_elo <- function(current_state, weights, iterations) {
-      predicted_elos <- numeric(iterations)
-      
-      for (i in 1:iterations) {
-        predicted_elo <- sum(current_state * weights)
-        predicted_elos[i] <- predicted_elo
-        
-        current_state[1] <- current_state[1] + rnorm(1, mean = 0, sd = 10)  # Simulate opponentElo change
-        current_state[4] <- current_state[4] + 1  # Increment Move_Number.y
-        current_state[6] <- current_state[6] + 1  # Increment GameNumber.y
-      }
-      
-      return(predicted_elos)
-    }
-    best_weights <- ga_model@solution
-    future_elos <- predict_future_elo(current_state, best_weights, 10)
-    
-    # Extract best fitness values as a numeric vector
-    best_fitness_values <- ga_model@summary[, 1]  # Ensure this is a vector
-    
-    # Create a data frame for plotting, transposing the vector to ensure it becomes a row
-    fitness_plot_data <- data.frame(
-      Iteration = 1:length(best_fitness_values),
-      BestFitness = t(best_fitness_values)  # Transpose to make it a row
-    )
-    
-
-    fitness_plot_data <- data.frame(
-      Iteration = 1:length(best_fitness_values),
-      BestFitness = best_fitness_values
-    )
-    
-    # Plotting the improvement of the GA with best fitness values
-    fitness_plot <- ggplot(data = fitness_plot_data, aes(x = Iteration, y = BestFitness)) +
-      geom_smooth(se = FALSE, color = "darkblue") +  # Trend line without standard error
-      labs(title = "GA Improvement Over Iterations (Best Fitness)",
-           x = "Iteration",
-           y = "Best Fitness (Negative MSE)") +
-      theme_minimal()
-    
-    # Render the plot
-    output$forecastPlot <- renderPlot({
-      print(fitness_plot)
-    })
-    
-    output$forecastText <- renderPrint({
-      print(future_elos)  # Print the predicted Elo ratings
-    })
     
   
 })
