@@ -330,7 +330,11 @@ output$plotOutput5 <- renderPlotly({
 
   })
   
+  # Include shinyjs for button control
+  library(shinyjs)
+  
   observeEvent(input$GetTimeBtn, {
+    shinyjs::disable("GetTimeBtn")  # Disable the button to prevent multiple clicks
     library(future.apply)
     plan(multisession)  # Parallel processing
     
@@ -354,15 +358,14 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
         
         for idx, move in enumerate(moves):
             board.push_san(move)
-            # Adjust depth based on move number if needed
-            move_depth = min(depth, 8 if idx < 10 else depth)  # Example depth adjustment
+            move_depth = min(depth, 8 if idx < 10 else depth)
             info = engine.analyse(board, chess.engine.Limit(depth=move_depth))
             
             mate_in = info['score'].relative.mate()
             if mate_in is not None:
                 score = 100 if mate_in == 0 else 100 * (mate_in / abs(mate_in))
             else:
-                score = info['score'].relative.score() / 100  # Centipawn to score
+                score = info['score'].relative.score() / 100
             if board.turn == chess.BLACK:
                 score = -score
             results.append((move, score))
@@ -374,7 +377,10 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
     combined_df <- combined_df()
     progress <- shiny::Progress$new()
     progress$set(message = "Processing games", value = 0)
-    on.exit(progress$close())
+    on.exit({
+      progress$close()
+      shinyjs::enable("GetTimeBtn")  # Re-enable the button after processing
+    })
     
     selected_time_class <- input$timeClass
     num_games_to_plot <- input$numGames
@@ -400,11 +406,22 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
     }
     
     combined_data <- vector("list", length(all_moves))
+    
     for (i in seq_along(all_moves)) {
+      if (is.null(all_moves[[i]]) || is.null(all_timestamps[[i]]) ||
+          length(all_moves[[i]]) == 0 || length(all_timestamps[[i]]) == 0) {
+        next
+      }
+      
       moves <- all_moves[[i]]
       timestamps <- all_timestamps[[i]]
       min_length <- min(length(moves), length(timestamps))
-      cleaned_timestamps <- clean_timestamp(timestamps[1:min_length])
+      
+      cleaned_timestamps <- tryCatch({
+        clean_timestamp(timestamps[1:min_length])
+      }, error = function(e) {
+        timestamps[1:min_length]
+      })
       
       game_data <- data.frame(
         Move = moves[1:min_length],
@@ -426,11 +443,20 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
       timestamps <- combined_data[[i]]$Timestamp
       total_time <- sapply(timestamps, convert_timestamp_to_seconds)
       
+      if (any(is.na(total_time)) || !all(sapply(total_time, is.numeric))) {
+        warning(paste("Non-numeric values detected in total_time for game", i))
+        total_time[is.na(total_time)] <- 0
+      }
+      
       timepermove_player1 <- c()
       timepermove_player2 <- c()
       
       for (move in 1:(length(total_time) - 2)) {
-        time_spent <- round(total_time[move] - total_time[move + 2], 2)
+        if (is.numeric(total_time[move]) && is.numeric(total_time[move + 2])) {
+          time_spent <- round(total_time[move] - total_time[move + 2], 2)
+        } else {
+          time_spent <- NA
+        }
         
         if (move %% 2 == 1) {
           timepermove_player1 <- c(timepermove_player1, time_spent)
@@ -460,66 +486,64 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
     
     stockfish_path <- "stockfish-windows-x86-64-avx2"
     
+    # Initialize results_df_scorea and game_results_df
     results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
     game_results_df <- data.frame()
     
+    # Process each game and retrieve analysis results
     for (i in 1:num_games_to_plot) {
       moves_string <- paste(unlist(combined_data[[i]][["Move"]]), collapse = " ")
       
       aaresults <- py$analyze_batch_of_moves(moves_string, depth = engine_depth, stockfish_path = stockfish_path)
       current_game_df <- as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE)
       
-      current_game_df$game_id <- i
-      unique_game_df <- current_game_df[!duplicated(current_game_df), ]
-      game_results_df <- rbind(game_results_df, unique_game_df)
+      # Only proceed if current_game_df has content
+      if (nrow(current_game_df) > 0) {
+        # Assign column names to current_game_df
+        names(current_game_df) <- c("Move", "Score")
+        current_game_df$game_id <- i
+        unique_game_df <- current_game_df[!duplicated(current_game_df), ]
+        game_results_df <- rbind(game_results_df, unique_game_df)
+        results_df_scorea <- rbind(results_df_scorea, current_game_df)
+      }
       
-      if (i %% 10 == 0) {  # Update progress bar every 5 games
+      # Update progress bar every 10 games
+      if (i %% 10 == 0) {
         progress$inc(10 / num_games_to_plot, detail = paste("Analyzing game", i, "of", num_games_to_plot))
       }
     }
     
-    names(current_game_df) <- c("Move", "Score")
-    results_df_scorea <- rbind(results_df_scorea, current_game_df)
+    # Ensure `results_df_scorea` and `zzztest` row counts match before merging
+    if (nrow(results_df_scorea) < nrow(zzztest)) {
+      results_df_scorea <- results_df_scorea[rep(seq_len(nrow(results_df_scorea)), length.out = nrow(zzztest)), ]
+    } else if (nrow(results_df_scorea) > nrow(zzztest)) {
+      results_df_scorea <- results_df_scorea[1:nrow(zzztest), ]
+    }
+    zzztest_subset <- zzztest[1:nrow(results_df_scorea), ]
     
-    # Determine the number of rows in the selected number of games
-    num_rows_in_selected_games <- length(zzztest)
-    # Subset zzztest based on the minimum of its own rows and the rows in selected games
-    zzztest_subset <- zzztest[1:min(nrow(zzztest), num_rows_in_selected_games), ]
-    
-    results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
-    
-    for (i in 1:num_games_to_plot) {
-      moves_string <- paste(unlist(combined_data[[i]][["Move"]]), collapse = " ")
+    # Merge the data frames only if they have content
+    if (nrow(zzztest_subset) > 0 && nrow(results_df_scorea) > 0) {
+      merged_data_complete <- cbind(zzztest_subset, results_df_scorea)
       
-      aaresults <- py$analyze_batch_of_moves(moves_string, depth = engine_depth, stockfish_path = stockfish_path)
-      current_game_df <- as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE)
-      names(current_game_df) <- c("Move", "Score")
+      # Generate usernames for merged data
+      usernames <- ifelse(seq_along(merged_data_complete$game_number) %% 2 == 1,
+                          combined_df$black$username[merged_data_complete$game_number],
+                          combined_df$white$username[merged_data_complete$game_number])
       
-      # Append data from each game to results_df_scorea
-      results_df_scorea <- rbind(results_df_scorea, current_game_df)
+      # Combine usernames with merged data
+      merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors = FALSE), merged_data_complete)
       
-      if (i %% 10 == 0) {  # Update progress bar every 10 games
-        progress$inc(10 / num_games_to_plot, detail = paste("Analyzing game", i, "of", num_games_to_plot))
-      }
+      # Convert Score to numeric and handle Black's evaluation flips
+      merged_data_complete2$Score <- as.numeric(merged_data_complete2$Score)
+      even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
+      merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
+      
+      # Filter for the specified username
+      merged_data_complete2 <- merged_data_complete2[merged_data_complete2$username == input$username, ]
+      merged_data_complete2(merged_data_complete2)
     }
     
-    # Now limit results_df_scorea to match the rows in zzztest
-    results_df_scorea <- results_df_scorea[1:nrow(zzztest), ]
-    
-    merged_data_complete <- cbind(zzztest, results_df_scorea)
-    usernames <- ifelse(seq_along(merged_data_complete$game_number) %% 2 == 1,
-                        combined_df$black$username[merged_data_complete$game_number],
-                        combined_df$white$username[merged_data_complete$game_number])
-    
-    merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors = FALSE), merged_data_complete)
-    merged_data_complete2$Score <- as.numeric(merged_data_complete2$Score)
-    
-    even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
-    merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
-    
-    merged_data_complete2 <- merged_data_complete2[merged_data_complete2$username == input$username, ]
-    merged_data_complete2(merged_data_complete2)
-    
+    # Plots and table rendering
     output$TimePlotOutput <- renderPlot({
       ggplot(data = zzztest, aes(x = move_number, y = time_per_move, color = time_class)) +
         geom_smooth() +
@@ -539,10 +563,11 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
     
     output$TimeTableOutput <- renderDataTable({
       table_data <- merged_data_complete2[, c("move_number", "username", "Score", "time_per_move")]
-      datatable(table_data, options = list(pageLength = 10))
+      data.frame(table_data, options = list(pageLength = 10))
     })
-    #browser()
+    
   })
+  
   
   observeEvent(input$GetForecastBtn, {
     
@@ -588,7 +613,7 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
         )
       )
     #Score Still ok
-    browser()
+    #browser()
     # Extract features (X) and target (y)
     result_df2$Score <- as.numeric(result_df2$Score)
     result_df2$year <- as.numeric(result_df2$year)
@@ -603,7 +628,7 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
       mse <- mean((y_true - y_pred)^2)
       return(-mse)  # Return the negative because GA maximizes by default
     }
-    browser()
+    #browser()
     
     ######################UNDER CONSTRUCTION #######################################
     

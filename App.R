@@ -1,5 +1,8 @@
 # app.R
 
+#Goal MAE = +- 8
+#Goal R^2 = 90-98%
+#Goal RMSE = +- 12
 
 library(shiny)
 library(httr)
@@ -24,8 +27,7 @@ shinyApp(ui, server)
 
 #Currently In Progress fix whatever made it not work
 
-#add in time_class to neural net
-#make sure neural net does not compare games of different time class
+
 
 #fix smooth in the time so that it is only showing time spent by username (Identify player color and then filter out odd and even moves respectively)
 #bubble plot should be the change in evaluation and measure if player took a good move vs a bad move aka min score or max score 
@@ -65,7 +67,8 @@ shinyApp(ui, server)
 #Done
 
 #fix the progress bar in time
-
+#add in time_class to neural net
+#make sure neural net does not compare games of different time class
 #fix the UI on first page
 #Segment Server into functions so that everything that is code related is defined elsewhere
 #Rewrite parts of code to make it into repeatable functions for readablitiy
