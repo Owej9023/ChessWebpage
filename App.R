@@ -1,8 +1,55 @@
 # app.R
 
 #Goal MAE = +- 8
-#Goal R^2 = 90-98%
 #Goal RMSE = +- 12
+#Goal R^2 = 90-98%
+
+
+#10 obs depth 5
+
+#Speed Seconds-Minutes
+#MAE 15.36
+#RMSE 16.57
+#R^2 -1.05
+
+#10 obs depth 20
+
+#Speed Minutes
+#MAE 8.36
+#RMSE 9.73
+#R^2 0.23
+
+#500 obs Depth 5
+
+#Speed Minutes-hours
+#MAE 28.66
+#RMSE 36.83
+#R^2 0.696 
+
+#500 obs Depth 10
+
+#Speed Minutes-Hours
+#MAE 21.08
+#RMSE 27.15
+#R^2 0.83
+
+
+#500 obs Depth 20
+
+#Speed hours-Days
+#MAE 
+#RMSE 
+#R^2 
+
+
+#3000 obs Depth 5
+
+#Speed Hours
+#MAE 19.67
+#RMSE 24.88
+#R^2 0.87
+
+
 
 library(shiny)
 library(httr)
@@ -27,7 +74,7 @@ shinyApp(ui, server)
 
 #Currently In Progress fix whatever made it not work
 
-
+# fix the attempt to apply non function in time
 
 #fix smooth in the time so that it is only showing time spent by username (Identify player color and then filter out odd and even moves respectively)
 #bubble plot should be the change in evaluation and measure if player took a good move vs a bad move aka min score or max score 
