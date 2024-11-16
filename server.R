@@ -310,7 +310,7 @@ output$plotOutput4 <- renderPlotly({
                yaxis = list(title = "Mean Elo"),
                barmode = "group")
 })
-browser()
+
 output$plotOutput5 <- renderPlotly({
     req(input$WeekSelect)
     filtered_summary_week <- summary_week() %>%
@@ -334,6 +334,37 @@ output$plotOutput5 <- renderPlotly({
   library(shinyjs)
   
   observeEvent(input$GetTimeBtn, {
+    # Define the Python code with batch analysis capability
+    py_run_string("
+import chess
+import chess.engine
+from multiprocessing import Pool
+
+engine_depth = 1
+stockfish_path = '/path/to/stockfish'
+
+def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfish_path):
+    with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
+        board = chess.Board()
+        moves = moves_str.split()
+        results = []
+        
+        for idx, move in enumerate(moves):
+            board.push_san(move)
+            move_depth = min(depth, 8 if idx < 10 else depth)
+            info = engine.analyse(board, chess.engine.Limit(depth=move_depth))
+            
+            mate_in = info['score'].relative.mate()
+            if mate_in is not None:
+                score = 100 if mate_in == 0 else 100 * (mate_in / abs(mate_in))
+            else:
+                score = info['score'].relative.score() / 100
+            if board.turn == chess.BLACK:
+                score = -score
+            results.append((move, score))
+        return results
+")
+    
     shinyjs::disable("GetTimeBtn")
     library(future.apply)
     plan(multisession)
