@@ -330,10 +330,16 @@ output$plotOutput5 <- renderPlotly({
 
   })
   
-  # Include shinyjs for button control
-  library(shinyjs)
-  
   observeEvent(input$GetTimeBtn, {
+<<<<<<< HEAD
+=======
+    library(future.apply)
+    plan(multisession)  # Parallel processing
+    
+    engine_depth <- as.integer(input$EngineDepth)
+    py$engine_depth <- engine_depth
+    
+>>>>>>> parent of ab6eb73 (Maybe fixed the timestamps not working with large numbers)
     # Define the Python code with batch analysis capability
     py_run_string("
 import chess
@@ -351,14 +357,15 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
         
         for idx, move in enumerate(moves):
             board.push_san(move)
-            move_depth = min(depth, 8 if idx < 10 else depth)
+            # Adjust depth based on move number if needed
+            move_depth = min(depth, 8 if idx < 10 else depth)  # Example depth adjustment
             info = engine.analyse(board, chess.engine.Limit(depth=move_depth))
             
             mate_in = info['score'].relative.mate()
             if mate_in is not None:
                 score = 100 if mate_in == 0 else 100 * (mate_in / abs(mate_in))
             else:
-                score = info['score'].relative.score() / 100
+                score = info['score'].relative.score() / 100  # Centipawn to score
             if board.turn == chess.BLACK:
                 score = -score
             results.append((move, score))
@@ -377,10 +384,14 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
     combined_df <- combined_df()
     progress <- shiny::Progress$new()
     progress$set(message = "Processing games", value = 0)
+<<<<<<< HEAD
     on.exit({
       progress$close()
       shinyjs::enable("GetTimeBtn")
     })
+=======
+    on.exit(progress$close())
+>>>>>>> parent of ab6eb73 (Maybe fixed the timestamps not working with large numbers)
     
     selected_time_class <- input$timeClass
     num_games_to_plot <- input$numGames
@@ -400,6 +411,7 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
       all_timestamps[[i]] <- temp_data$timestamps
     }
     
+<<<<<<< HEAD
     combined_data <- future_lapply(seq_along(all_moves), function(i) {
       moves <- all_moves[[i]]
       timestamps <- all_timestamps[[i]]
@@ -408,6 +420,14 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
       cleaned_timestamps <- tryCatch({
         clean_timestamp(timestamps[1:min_length])
       }, error = function(e) timestamps[1:min_length])
+=======
+    combined_data <- vector("list", length(all_moves))
+    for (i in seq_along(all_moves)) {
+      moves <- all_moves[[i]]
+      timestamps <- all_timestamps[[i]]
+      min_length <- min(length(moves), length(timestamps))
+      cleaned_timestamps <- clean_timestamp(timestamps[1:min_length])
+>>>>>>> parent of ab6eb73 (Maybe fixed the timestamps not working with large numbers)
       
       game_data <- data.frame(Move = clean_moves(moves[1:min_length]), Timestamp = cleaned_timestamps, stringsAsFactors = FALSE)
       return(game_data)
@@ -424,6 +444,7 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
       end_idx <- min(batch_num * batch_size, num_games_to_plot)
       print(paste("Processing batch", batch_num, "for games", start_idx, "to", end_idx))
       
+<<<<<<< HEAD
       for (i in start_idx:end_idx) {
         moves_string <- paste(unlist(combined_data[[i]][["Move"]]), collapse = " ")
         
@@ -437,6 +458,13 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
           unique_game_df <- current_game_df[!duplicated(current_game_df), ]
           game_results_df <- rbind(game_results_df, unique_game_df)
         }
+=======
+      timepermove_player1 <- c()
+      timepermove_player2 <- c()
+      
+      for (move in 1:(length(total_time) - 2)) {
+        time_spent <- round(total_time[move] - total_time[move + 2], 2)
+>>>>>>> parent of ab6eb73 (Maybe fixed the timestamps not working with large numbers)
         
         if (i %% 10 == 0) {
           progress$inc(10 / num_games_to_plot, detail = paste("Analyzing game", i, "of", num_games_to_plot))
@@ -448,6 +476,7 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
       print(paste("Completed batch", batch_num, "and saved intermediate results."))
     }
     
+<<<<<<< HEAD
     # Ensure results have the correct length for plotting
     if (nrow(results_df_scorea) < nrow(zzztest)) {
       results_df_scorea <- results_df_scorea[rep(seq_len(nrow(results_df_scorea)), length.out = nrow(zzztest)), ]
@@ -470,6 +499,85 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
       merged_data_complete2(merged_data_complete2)
     }
     
+=======
+    zzztest <- do.call(rbind, future_lapply(seq_along(all_timepermove_player1), function(list_num) {
+      player1_times <- all_timepermove_player1[[list_num]]
+      player2_times <- all_timepermove_player2[[list_num]]
+      
+      combined_times <- c(player1_times, player2_times)
+      move_nums <- seq_along(combined_times)
+      
+      data.frame(
+        time_per_move = combined_times,
+        move_number = move_nums,
+        game_number = list_num,
+        time_class = rep(filtered_data$time_class[list_num], length(combined_times))
+      )
+    }))
+    
+    stockfish_path <- "stockfish-windows-x86-64-avx2"
+    
+    results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
+    game_results_df <- data.frame()
+    
+    for (i in 1:num_games_to_plot) {
+      moves_string <- paste(unlist(combined_data[[i]][["Move"]]), collapse = " ")
+      
+      aaresults <- py$analyze_batch_of_moves(moves_string, depth = engine_depth, stockfish_path = stockfish_path)
+      current_game_df <- as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE)
+      
+      current_game_df$game_id <- i
+      unique_game_df <- current_game_df[!duplicated(current_game_df), ]
+      game_results_df <- rbind(game_results_df, unique_game_df)
+      
+      if (i %% 10 == 0) {  # Update progress bar every 5 games
+        progress$inc(10 / num_games_to_plot, detail = paste("Analyzing game", i, "of", num_games_to_plot))
+      }
+    }
+    
+    names(current_game_df) <- c("Move", "Score")
+    results_df_scorea <- rbind(results_df_scorea, current_game_df)
+    
+    # Determine the number of rows in the selected number of games
+    num_rows_in_selected_games <- length(zzztest)
+    # Subset zzztest based on the minimum of its own rows and the rows in selected games
+    zzztest_subset <- zzztest[1:min(nrow(zzztest), num_rows_in_selected_games), ]
+    
+    results_df_scorea <- data.frame(Move = character(), Score = numeric(), stringsAsFactors = FALSE)
+    
+    for (i in 1:num_games_to_plot) {
+      moves_string <- paste(unlist(combined_data[[i]][["Move"]]), collapse = " ")
+      
+      aaresults <- py$analyze_batch_of_moves(moves_string, depth = engine_depth, stockfish_path = stockfish_path)
+      current_game_df <- as.data.frame(do.call(rbind, aaresults), stringsAsFactors = FALSE)
+      names(current_game_df) <- c("Move", "Score")
+      
+      # Append data from each game to results_df_scorea
+      results_df_scorea <- rbind(results_df_scorea, current_game_df)
+      
+      if (i %% 10 == 0) {  # Update progress bar every 10 games
+        progress$inc(10 / num_games_to_plot, detail = paste("Analyzing game", i, "of", num_games_to_plot))
+      }
+    }
+    
+    # Now limit results_df_scorea to match the rows in zzztest
+    results_df_scorea <- results_df_scorea[1:nrow(zzztest), ]
+    
+    merged_data_complete <- cbind(zzztest, results_df_scorea)
+    usernames <- ifelse(seq_along(merged_data_complete$game_number) %% 2 == 1,
+                        combined_df$black$username[merged_data_complete$game_number],
+                        combined_df$white$username[merged_data_complete$game_number])
+    
+    merged_data_complete2 <- cbind(data.frame(username = usernames, stringsAsFactors = FALSE), merged_data_complete)
+    merged_data_complete2$Score <- as.numeric(merged_data_complete2$Score)
+    
+    even_positions <- seq(2, length(merged_data_complete2$Score), by = 2)
+    merged_data_complete2$Score[even_positions] <- merged_data_complete2$Score[even_positions] * -1
+    
+    merged_data_complete2 <- merged_data_complete2[merged_data_complete2$username == input$username, ]
+    merged_data_complete2(merged_data_complete2)
+    
+>>>>>>> parent of ab6eb73 (Maybe fixed the timestamps not working with large numbers)
     output$TimePlotOutput <- renderPlot({
       ggplot(data = zzztest, aes(x = move_number, y = time_per_move, color = time_class)) +
         geom_smooth() +
@@ -489,13 +597,19 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
     
     output$TimeTableOutput <- renderDataTable({
       table_data <- merged_data_complete2[, c("move_number", "username", "Score", "time_per_move")]
-      data.frame(table_data, options = list(pageLength = 10))
+      datatable(table_data, options = list(pageLength = 10))
     })
+<<<<<<< HEAD
   })
   
   
   
   
+=======
+    #browser()
+  })
+  
+>>>>>>> parent of ab6eb73 (Maybe fixed the timestamps not working with large numbers)
   observeEvent(input$GetForecastBtn, {
     
     result_df <- result_df()
@@ -540,7 +654,7 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
         )
       )
     #Score Still ok
-    #browser()
+    browser()
     # Extract features (X) and target (y)
     result_df2$Score <- as.numeric(result_df2$Score)
     result_df2$year <- as.numeric(result_df2$year)
@@ -555,7 +669,7 @@ def analyze_batch_of_moves(moves_str, depth=engine_depth, stockfish_path=stockfi
       mse <- mean((y_true - y_pred)^2)
       return(-mse)  # Return the negative because GA maximizes by default
     }
-    #browser()
+    browser()
     
     ######################UNDER CONSTRUCTION #######################################
     
